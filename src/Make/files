@@ -1,0 +1,5 @@
+turbulentTransportModels.C
+kOmegaDavidsonNNWallFunction/kOmegaDavidsonNNWallFunction.C
+kOmegaDavidsonNNOmegaBC/kOmegaDavidsonNNOmegaBC.C
+
+LIB = $(FOAM_USER_LIBBIN)/libkOmegaDavidsonNN

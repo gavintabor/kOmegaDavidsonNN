@@ -1,0 +1,72 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      sampleDict;
+}
+
+type            sets;
+libs            (sampling);
+interpolationScheme cellPoint;
+setFormat       raw;
+
+fields (U k);
+
+sets
+(
+
+    profile_x0
+    {
+        type        uniform;
+        axis        y;
+        start       (0.006350 -0.0254 0.0);
+        end         (0.006350  0.0508 0.0);
+        nPoints     100;
+    }
+
+    profile_x1
+    {
+        type        uniform;
+        axis        y;
+        start       (0.012700 -0.0254 0.0);
+        end         (0.012700  0.0508 0.0);
+        nPoints     100;
+    }
+
+    profile_x2
+    {
+        type        uniform;
+        axis        y;
+        start       (0.025400 -0.0254 0.0);
+        end         (0.025400  0.0508 0.0);
+        nPoints     100;
+    }
+
+    profile_x3
+    {
+        type        uniform;
+        axis        y;
+        start       (0.038100 -0.0254 0.0);
+        end         (0.038100  0.0508 0.0);
+        nPoints     100;
+    }
+
+    profile_x4
+    {
+        type        uniform;
+        axis        y;
+        start       (0.050800 -0.0254 0.0);
+        end         (0.050800  0.0508 0.0);
+        nPoints     100;
+    }
+
+    profile_x5
+    {
+        type        uniform;
+        axis        y;
+        start       (0.063500 -0.0254 0.0);
+        end         (0.063500  0.0508 0.0);
+        nPoints     100;
+    }
+);

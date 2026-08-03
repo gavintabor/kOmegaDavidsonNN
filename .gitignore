@@ -1,0 +1,30 @@
+# Third-party reference material (Davidson's paper/code) - not for redistribution
+/literature/
+
+# Local convenience file (Claude Code session resume command)
+/claudeResume
+
+# Redundant backup of the (tracked) src/ directory
+/src.zip
+
+# Leftover duplicate download (same 3 files already tracked in cases/NNCheck/)
+/cases/files (1).zip
+
+# OpenFOAM build artifacts
+src/lnInclude/
+src/Make/*/
+
+# Python
+__pycache__/
+*.pyc
+
+# OpenFOAM run artifacts (all regenerable via Allrun) - solver logs,
+# case-generated postProcessing/ function-object output, processor
+# directories from parallel runs, and solved time-step directories
+# (keep 0/ since it holds the initial/boundary conditions).
+log.*
+processor*/
+postProcessing/
+!/postProcessing/
+cases/*/*/[0-9]*/
+!cases/*/*/0/

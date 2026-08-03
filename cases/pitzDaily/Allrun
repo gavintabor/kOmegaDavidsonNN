@@ -1,0 +1,16 @@
+#!/bin/bash
+cd ${0%/*} || exit 1
+. $WM_PROJECT_DIR/bin/tools/RunFunctions
+
+echo "=== pitzDaily ==="
+
+echo "--- Running standard kOmega ---"
+( cd kOmega && runApplication simpleFoam )
+
+echo "--- Running kOmegaDavidsonNN ---"
+( cd kOmegaDavidsonNN && runApplication simpleFoam )
+
+echo "--- Post-processing ---"
+python3 ../../postProcessing/plotPitzDaily.py kOmegaDavidsonNN kOmega
+
+echo "=== pitzDaily complete ==="

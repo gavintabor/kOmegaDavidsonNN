@@ -1,0 +1,16 @@
+#!/bin/bash
+cd ${0%/*} || exit 1
+. $WM_PROJECT_DIR/bin/tools/RunFunctions
+
+echo "=== Flat plate boundary layer ==="
+
+echo "--- Running standard kOmega ---"
+( cd kOmega && runApplication blockMesh && runApplication simpleFoam )
+
+echo "--- Running kOmegaDavidsonNN ---"
+( cd kOmegaDavidsonNN && runApplication blockMesh && runApplication simpleFoam )
+
+echo "--- Post-processing ---"
+python3 ../../postProcessing/plotFlatPlate.py kOmegaDavidsonNN kOmega
+
+echo "=== Flat plate complete ==="

@@ -1,0 +1,98 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      blockMeshDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+scale   1;
+
+vertices
+(
+    (0.00  0.00  0.000)   // 0
+    (0.92  0.00  0.000)   // 1
+    (0.92  0.211564  0.000)   // 2
+    (0.00  0.211564  0.000)   // 3
+    (0.00  0.00      0.010)   // 4
+    (0.92  0.00      0.010)   // 5
+    (0.92  0.211564  0.010)   // 6
+    (0.00  0.211564  0.010)   // 7
+);
+
+blocks
+(
+    // 150 cells in x (uniform), 52 in y (graded), 1 in z (2D)
+    // y grading: h1=1.5e-4 m, r=1.1 per cell, simpleGrading=129 (last/first)
+    // domain height = 0.2116 m (determined by h1, r, n=52)
+    hex (0 1 2 3 4 5 6 7)
+    (150 52 1)
+    simpleGrading (1 129 1)
+);
+
+boundary
+(
+    inlet
+    {
+        type patch;
+        faces
+        (
+            (0 4 7 3)
+        );
+    }
+
+    outlet
+    {
+        type patch;
+        faces
+        (
+            (1 2 6 5)
+        );
+    }
+
+    bottom
+    {
+        type wall;
+        faces
+        (
+            (0 1 5 4)
+        );
+    }
+
+    top
+    {
+        type patch;
+        faces
+        (
+            (3 7 6 2)
+        );
+    }
+
+    front
+    {
+        type empty;
+        faces
+        (
+            (0 3 2 1)
+        );
+    }
+
+    back
+    {
+        type empty;
+        faces
+        (
+            (4 5 6 7)
+        );
+    }
+);
+
+// ************************************************************************* //

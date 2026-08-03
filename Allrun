@@ -1,0 +1,18 @@
+#!/bin/bash
+cd ${0%/*} || exit 1
+. $WM_PROJECT_DIR/bin/tools/RunFunctions
+
+echo "=== kOmegaDavidsonNN — full test suite ==="
+echo "=== Davidson (2026), DOI: 10.1080/14685248.2026.2665148 ==="
+
+# Build library first
+echo "--- Building library ---"
+( cd src && ./Allwmake ) || { echo "ERROR: Library build failed"; exit 1; }
+
+# Run all cases
+for case in channelFlow5200 flatPlate pitzDaily periodicHill; do
+    echo "--- Running case: $case ---"
+    ( cd cases/$case && ./Allrun ) || echo "WARNING: $case failed"
+done
+
+echo "=== All cases complete ==="

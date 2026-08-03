@@ -1,0 +1,24 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      fvOptions;
+}
+
+// Fixed body force: 1.0 N/m³ in x gives u_τ = 1.0 at convergence (ρ=1, δ=1).
+momentumSource
+{
+    type            vectorSemiImplicitSource;
+    active          true;
+    selectionMode   all;
+    volumeMode      specific;
+    sources
+    {
+        U
+        {
+            explicit    (1.0 0 0);
+            implicit    0;
+        }
+    }
+}
