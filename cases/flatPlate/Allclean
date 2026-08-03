@@ -3,6 +3,10 @@ cd ${0%/*} || exit 1
 . $WM_PROJECT_DIR/bin/tools/CleanFunctions
 
 for d in kOmegaDavidsonNN kOmega; do
-    ( cd "$d" && cleanCase && rm -rf constant/polyMesh )
+    # cleanCase leaves 0/{C,Cx,Cy,Cz,Cf} alone since they're inside 0/, not
+    # a solver-written time directory -- but plotFlatPlate.py auto-generates
+    # them from writeCellCentres, and they go stale (wrong size) if the mesh
+    # is later changed. Remove them so they're always regenerated fresh.
+    ( cd "$d" && cleanCase && rm -rf constant/polyMesh && rm -f 0/C 0/Cx 0/Cy 0/Cz 0/Cf )
 done
 rm -f *.png

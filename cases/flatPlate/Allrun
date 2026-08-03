@@ -5,10 +5,12 @@ cd ${0%/*} || exit 1
 echo "=== Flat plate boundary layer ==="
 
 echo "--- Running standard kOmega ---"
-( cd kOmega && runApplication blockMesh && runApplication simpleFoam )
+( cd kOmega && runApplication blockMesh && runApplication simpleFoam && \
+  runApplication -s wallShearStress simpleFoam -postProcess -func wallShearStress -latestTime )
 
 echo "--- Running kOmegaDavidsonNN ---"
-( cd kOmegaDavidsonNN && runApplication blockMesh && runApplication simpleFoam )
+( cd kOmegaDavidsonNN && runApplication blockMesh && runApplication simpleFoam && \
+  runApplication -s wallShearStress simpleFoam -postProcess -func wallShearStress -latestTime )
 
 echo "--- Post-processing ---"
 python3 ../../postProcessing/plotFlatPlate.py kOmegaDavidsonNN kOmega

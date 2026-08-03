@@ -28,3 +28,13 @@ postProcessing/
 !/postProcessing/
 cases/*/*/[0-9]*/
 !cases/*/*/0/
+
+# writeCellCentres output, auto-generated into 0/ by the plotting scripts
+# on demand -- goes stale (wrong size) if the mesh later changes, so it
+# must never be committed (caused a real crash in plotFlatPlate.py when
+# the flatPlate mesh was regridded but this was left over from the old one).
+cases/*/*/0/C
+cases/*/*/0/Cx
+cases/*/*/0/Cy
+cases/*/*/0/Cz
+cases/*/*/0/Cf

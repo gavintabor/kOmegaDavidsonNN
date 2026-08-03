@@ -55,7 +55,7 @@ Most cases provide a `kOmega` baseline and a `kOmegaDavidsonNN` variant.
 | Case | Description | Reference |
 |---|---|---|
 | channelFlow5200 | Fully-developed channel flow Re_tau=5200 | Davidson Fig. 8 |
-| flatPlate | Flat-plate boundary layer Re_theta=2550-8000 | Davidson Fig. 12 |
+| flatPlate | Flat-plate boundary layer, developing from Re_theta=2550 | Davidson Fig. 12 |
 | pitzDaily | Backward-facing step (OpenFOAM tutorial) | — |
 | periodicHill | Periodic hill Re=10565 | Davidson Fig. 14 |
 
@@ -79,7 +79,56 @@ Davidson (2026) Fig. 8 closely, with U_bulk staying near both `kOmega` and
 DNS (24.33 vs 24.13/~24.1) and k⁺ peak rising from 3.11 to 5.75 (DNS 5.87).
 See "Known limitations" below for the friction-velocity fix this relies on.
 Post-processing: `python3 plotChannelFlow.py kOmega kOmegaDavidsonNN` from
-the `channelFlow5200/` directory.
+the `channelFlow5200/` directory. `NN_coefficients_kOmegaDavidsonNN.png`
+plots σ_k,NN and C_k,NN on a shared left axis and C_ω2,NN on its own right
+axis (both vs y), matching Davidson (2026) Fig. 8(d)'s combined-axes layout
+rather than three separately-scaled panels.
+
+### flatPlate sub-cases
+
+Flat-plate zero-pressure-gradient turbulent boundary layer, matching Davidson
+(2026) Sec. 5.2's actual setup rather than a simpler leading-edge-developing
+approximation: a 150×90 grid over a 75.19×18.02 m domain (uniform streamwise,
+geometric-then-uniform wall-normal grading, matching his stated 92δ_in×20δ_in
+size), ν = 3.57×10⁻⁵ m²/s, and — most importantly — an **inlet condition that
+is already a fully turbulent boundary layer at Re_θ=2550** (U, k, ω profiles
+from Davidson's own precursor RANS run,
+`literature/pythons-rans-code-RANS-open/boundary-layer-.../`), not a uniform
+freestream growing from a sharp leading edge. `generate_inlet_profile.py`
+regenerates the `0/{U,k,omega}` inlet boundary values and the blockMesh
+grading fractions from that reference data; it's a one-time provenance
+script, not part of `Allrun` (its inputs live in `literature/`, which isn't
+distributed with this repo — see "Not in the git repo" below).
+
+Re_θ(x) is computed from the actual velocity field's momentum thickness
+(using the *local* edge velocity at each station, not a fixed freestream
+reference — this domain's finite height causes mild core-flow acceleration
+downstream that a fixed reference would misread as Re_θ *decreasing*), not
+a leading-edge correlation. `plotFlatPlate.py` extracts profiles at fixed
+Re_θ targets (3000, 4000, 4500, 5500 — the third matches Davidson's Fig. 12
+comparison station, the fourth matches the DNS reference data below) rather
+than arbitrary fractions of the plate length, and overlays DNS (Sillero,
+Jiménez & Moser 2014 — the dataset Davidson's Fig. 12 actually cites, closest
+available station locally at Re_θ=5500) on the U⁺, k⁺, and u'v'⁺ plots. The
+skin-friction plot uses Davidson's own correlation and ±6% band
+(`Cf = 2(1/0.384·ln(Re_θ)+4.127)⁻²`) on his exact linear Re_θ=3000–5000 /
+Cf=2.8–3.6×10⁻³ axes, and the NN-coefficient plot shows σ_k,NN/C_k,NN (left
+axis) and C_ω2,NN (right axis) against y/δ₉₉ at each station — all five
+now structurally match Davidson's Fig. 12(a)-(e) rather than the differently
+axed/binned plots this port previously produced.
+
+**Known open finding**: around Re_θ≈4600–4900, `kOmegaDavidsonNN` shows a
+sharp (near-discontinuous) transition in near-wall k, ν_t, and the NN
+coefficients — traced to the σ_k,NN/C_k,NN/C_ω2,NN ↔ k feedback becoming
+locally numerically stiff at the flat-plate default EWMA window
+(`ewmaM=500`, Davidson Eq. 18) once the boundary layer develops far enough
+downstream (further than Davidson's own 92δ_in domain likely reaches). Using
+his channel-flow window instead (`ewmaM=3000`) smooths this into a gradual
+transition over a much wider Re_θ range instead — same eventual state, no
+longer stiff — at the cost of a much slower-responding coefficient
+everywhere else on the plate, and a correspondingly much longer run to
+convergence (roughly 100,000 iterations here, vs ~15,000 at `ewmaM=500`).
+This case now uses `ewmaM=3000`. See "Known limitations" below.
 
 ### periodicHill sub-cases
 
@@ -255,6 +304,22 @@ relaxationFactors
   boundary layer (`flatPlate`), but does **not** yet handle cases with
   multiple or separated walls (`pitzDaily`, `periodicHill`) — those still
   use the same domain-wide average, which is a coarser approximation there.
+- **`flatPlate`'s σ_k,NN/C_k,NN/C_ω2,NN ↔ k feedback is numerically stiff at
+  Davidson's stated flat-plate EWMA window.** With `ewmaM=500` (his default
+  for non-channel cases), near-wall k, ν_t, and the NN coefficients undergo a
+  near-discontinuous ~3× collapse over a handful of cells around
+  Re_θ≈4600–4900 — confirmed to persist in the fully-converged solution, not
+  a transient artifact. Davidson's own note that this class of instability
+  ("slow oscillations... related to the strong elliptic character") doesn't
+  occur in flat-plate flow is about *temporal* oscillation at a point; this
+  is a distinct *spatial* stiffness that only appears once the boundary
+  layer develops far enough downstream — plausibly further than his own
+  92δ_in domain reaches, which may be why it isn't reported in the paper.
+  Using his channel-flow window (`ewmaM=3000`) instead resolves it into a
+  smooth transition over a much wider Re_θ range (same eventual state, not
+  stiff), at the cost of a much more sluggish coefficient response
+  everywhere else and a proportionally much longer run to convergence. This
+  case now uses `ewmaM=3000`; see the "flatPlate sub-cases" section above.
 
 ## Citation
 

@@ -224,25 +224,40 @@ def main():
 
     # ----------------------------------------------------------------
     # Plot 4: NN coefficient fields (first kOmegaDavidsonNN case only)
+    #
+    # Matches Davidson (2026) Fig. 8(d): sigma_k,NN and C_k,NN share the
+    # left axis (both O(1)), C_omega2,NN gets its own right axis since its
+    # standard value (0.072) is ~an order of magnitude smaller.
     # ----------------------------------------------------------------
     for label, y, Ux, k, nn in results:
         if nn:
-            fig, axes = plt.subplots(1, 3, figsize=(14, 5))
-            std = {'sigmakNN': 2.0, 'CkNN': 1.0, 'Comega2NN': 0.075}
-            labels = {'sigmakNN': r'$\sigma_{k,NN}$',
-                      'CkNN': r'$C_{k,NN}$',
-                      'Comega2NN': r'$C_{\omega2,NN}$'}
-            colors_nn = ['tab:blue', 'tab:red', 'tab:green']
-            for ax, (fname, col) in zip(axes, zip(('sigmakNN','CkNN','Comega2NN'), colors_nn)):
-                if fname in nn:
-                    ax.plot(y, nn[fname], color=col, lw=2)
-                    ax.axhline(std[fname], color='k', ls='--', lw=1, label='Standard')
-                ax.set_xlabel(r'$y$')
-                ax.set_ylabel(labels[fname])
-                ax.set_title(labels[fname])
-                ax.grid(True, alpha=0.3)
-                ax.legend()
-            plt.suptitle(rf'NN coefficient fields — {label}, $Re_\tau = 5200$')
+            fig, ax1 = plt.subplots(figsize=(8, 6))
+            ax2 = ax1.twinx()
+
+            lines = []
+            if 'sigmakNN' in nn:
+                l, = ax1.plot(y, nn['sigmakNN'], color='tab:blue', lw=2,
+                               label=r'$\sigma_{k,NN}$')
+                ax1.axhline(2.0, color='tab:blue', ls=':', lw=1)
+                lines.append(l)
+            if 'CkNN' in nn:
+                l, = ax1.plot(y, nn['CkNN'], color='tab:red', lw=2,
+                               label=r'$C_{k,NN}$')
+                ax1.axhline(1.0, color='tab:red', ls=':', lw=1)
+                lines.append(l)
+            if 'Comega2NN' in nn:
+                l, = ax2.plot(y, nn['Comega2NN'], color='tab:green', lw=2,
+                               label=r'$C_{\omega2,NN}$')
+                ax2.axhline(0.072, color='tab:green', ls=':', lw=1)
+                lines.append(l)
+
+            ax1.set_xlabel(r'$y$')
+            ax1.set_ylabel(r'$\sigma_{k,NN}$, $C_{k,NN}$')
+            ax2.set_ylabel(r'$C_{\omega2,NN}$')
+            ax1.set_title(rf'NN coefficient fields — {label}, $Re_\tau = 5200$')
+            ax1.grid(True, alpha=0.3)
+            ax1.legend(lines, [l.get_label() for l in lines], loc='best')
+
             plt.tight_layout()
             plt.savefig(f'NN_coefficients_{label}.png', dpi=150)
             print(f"Saved: NN_coefficients_{label}.png")

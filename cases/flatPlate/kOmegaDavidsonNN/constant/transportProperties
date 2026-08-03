@@ -16,6 +16,8 @@ FoamFile
 
 transportModel  Newtonian;
 
-nu              1.5e-5;
+// Matches Davidson (2026) Sec. 5.2's flat-plate precursor RANS setup
+// (literature/pythons-rans-code-RANS-open/boundary-layer-.../exec-pyCALC-RANS.py)
+nu              3.57e-5;
 
 // ************************************************************************* //

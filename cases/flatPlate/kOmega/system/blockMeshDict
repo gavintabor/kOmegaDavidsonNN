@@ -18,24 +18,35 @@ scale   1;
 
 vertices
 (
-    (0.00  0.00  0.000)   // 0
-    (0.92  0.00  0.000)   // 1
-    (0.92  0.211564  0.000)   // 2
-    (0.00  0.211564  0.000)   // 3
-    (0.00  0.00      0.010)   // 4
-    (0.92  0.00      0.010)   // 5
-    (0.92  0.211564  0.010)   // 6
-    (0.00  0.211564  0.010)   // 7
+    (0.00        0.00        0.000)   // 0
+    (75.190209   0.00        0.000)   // 1
+    (75.190209   18.022070   0.000)   // 2
+    (0.00        18.022070   0.000)   // 3
+    (0.00        0.00        0.010)   // 4
+    (75.190209   0.00        0.010)   // 5
+    (75.190209   18.022070   0.010)   // 6
+    (0.00        18.022070   0.010)   // 7
 );
 
 blocks
 (
-    // 150 cells in x (uniform), 52 in y (graded), 1 in z (2D)
-    // y grading: h1=1.5e-4 m, r=1.1 per cell, simpleGrading=129 (last/first)
-    // domain height = 0.2116 m (determined by h1, r, n=52)
+    // 150 cells in x (uniform), 90 in y (graded), 1 in z (2D).
+    // Reproduces Davidson (2026) Sec. 5.2's flat-plate grid: 150x90 cells,
+    // domain 92*delta_in x 20*delta_in, y-grid geometric near the wall
+    // (dy0=9.83e-4, r=1.1/cell) up to y=6.354 then uniform to y=18.022 --
+    // see cases/flatPlate/generate_inlet_profile.py for how these grading
+    // fractions were derived from Davidson's own y2d.dat.
     hex (0 1 2 3 4 5 6 7)
-    (150 52 1)
-    simpleGrading (1 129 1)
+    (150 90 1)
+    simpleGrading
+    (
+        1
+        (
+            (0.352588 0.755556 539.4078)
+            (0.647412 0.244444 1)
+        )
+        1
+    )
 );
 
 boundary

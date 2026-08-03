@@ -23,6 +23,16 @@ RAS
     turbulence      on;
 
     printCoeffs     on;
+
+    // Davidson's stated flat-plate default (500) is numerically stiff here:
+    // the sigma_k,NN/C_k,NN/C_omega2,NN <-> k feedback becomes locally
+    // stiff around Re_theta~4600-4900 (this case's domain reaches further
+    // downstream than his 92*delta_in one), producing a near-discontinuous
+    // 3x collapse in near-wall k over ~4 cells. Davidson's channel-flow
+    // value (3000) resolves it into a smooth transition over a much wider
+    // Re_theta range instead, at the cost of a more sluggish coefficient
+    // response elsewhere on the plate.
+    ewmaM           3000;
 }
 
 // ************************************************************************* //
