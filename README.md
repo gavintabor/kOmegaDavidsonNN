@@ -119,16 +119,20 @@ axed/binned plots this port previously produced.
 
 **Known open finding**: around Re_θ≈4600–4900, `kOmegaDavidsonNN` shows a
 sharp (near-discontinuous) transition in near-wall k, ν_t, and the NN
-coefficients — traced to the σ_k,NN/C_k,NN/C_ω2,NN ↔ k feedback becoming
-locally numerically stiff at the flat-plate default EWMA window
-(`ewmaM=500`, Davidson Eq. 18) once the boundary layer develops far enough
-downstream (further than Davidson's own 92δ_in domain likely reaches). Using
-his channel-flow window instead (`ewmaM=3000`) smooths this into a gradual
-transition over a much wider Re_θ range instead — same eventual state, no
-longer stiff — at the cost of a much slower-responding coefficient
-everywhere else on the plate, and a correspondingly much longer run to
-convergence (roughly 100,000 iterations here, vs ~15,000 at `ewmaM=500`).
-This case now uses `ewmaM=3000`. See "Known limitations" below.
+coefficients — a ~3× collapse in k over about 4 cells, driven by the
+σ_k,NN/C_k,NN/C_ω2,NN ↔ k feedback. This is confirmed to be a genuine
+converged steady-state property of the coupled model, not a relaxation
+artifact: it appears identically (same location, same magnitude) whether
+the EWMA averaging window (Davidson Eq. 18) is his flat-plate default
+(`ewmaM=500`) or his channel-flow value (`ewmaM=3000`), run to full
+convergence in each case — `ewmaM` controls how fast the solution *reaches*
+its steady state, not what that steady state *is*. (An earlier version of
+this note claimed `ewmaM=3000` smoothed the transition away; that was
+comparing a fully-converged `ewmaM=500` run against an under-converged
+`ewmaM=3000` one that only looked smoother because it hadn't caught up yet
+— wrong comparison, now corrected.) This case keeps the default `ewmaM=500`,
+since 3000 gives an identical answer for ~6× the iterations. See "Known
+limitations" below.
 
 ### periodicHill sub-cases
 
@@ -170,8 +174,13 @@ RAS
 
 The `ewmaM` parameter controls how quickly the NN outputs are smoothed into the
 coefficient fields via exponential weighted moving averaging
-(`a = exp(-1/ewmaM)`). The default of 500 produces noticeably different
-steady-state velocity profiles from 3000; always set it explicitly.
+(`a = exp(-1/ewmaM)`). This mainly affects how many iterations are needed to
+*reach* a converged steady state, not necessarily what that steady state is
+— confirmed for `flatPlate`, where 500 and 3000 converge (at vastly
+different iteration counts) to an identical result; see "Known
+limitations". It may still matter for cases with a genuinely oscillatory
+(non-fixed-point) steady state, so set it explicitly and check convergence
+rather than assuming either value is "correct" by default.
 
 ## Optional PySR expression for σ_k
 
@@ -304,22 +313,22 @@ relaxationFactors
   boundary layer (`flatPlate`), but does **not** yet handle cases with
   multiple or separated walls (`pitzDaily`, `periodicHill`) — those still
   use the same domain-wide average, which is a coarser approximation there.
-- **`flatPlate`'s σ_k,NN/C_k,NN/C_ω2,NN ↔ k feedback is numerically stiff at
-  Davidson's stated flat-plate EWMA window.** With `ewmaM=500` (his default
-  for non-channel cases), near-wall k, ν_t, and the NN coefficients undergo a
-  near-discontinuous ~3× collapse over a handful of cells around
-  Re_θ≈4600–4900 — confirmed to persist in the fully-converged solution, not
-  a transient artifact. Davidson's own note that this class of instability
-  ("slow oscillations... related to the strong elliptic character") doesn't
-  occur in flat-plate flow is about *temporal* oscillation at a point; this
-  is a distinct *spatial* stiffness that only appears once the boundary
-  layer develops far enough downstream — plausibly further than his own
-  92δ_in domain reaches, which may be why it isn't reported in the paper.
-  Using his channel-flow window (`ewmaM=3000`) instead resolves it into a
-  smooth transition over a much wider Re_θ range (same eventual state, not
-  stiff), at the cost of a much more sluggish coefficient response
-  everywhere else and a proportionally much longer run to convergence. This
-  case now uses `ewmaM=3000`; see the "flatPlate sub-cases" section above.
+- **`flatPlate`'s σ_k,NN/C_k,NN/C_ω2,NN ↔ k feedback has a genuine
+  near-discontinuous transition around Re_θ≈4600–4900**, independent of the
+  EWMA averaging window. Near-wall k, ν_t, and the NN coefficients undergo a
+  ~3× collapse over a handful of cells; confirmed to persist identically
+  (same location, same magnitude) whether `ewmaM` (Davidson Eq. 18) is his
+  flat-plate default (500) or his channel-flow value (3000), each run to
+  full convergence — ruling out a relaxation-timescale artifact and pointing
+  to a genuine steady-state property of the coupled model in this regime.
+  Davidson's own note that this class of instability ("slow oscillations...
+  related to the strong elliptic character") doesn't occur in flat-plate
+  flow is about *temporal* oscillation at a point; this is a distinct
+  *spatial* transition that only appears once the boundary layer develops
+  far enough downstream — plausibly further than his own 92δ_in domain
+  reaches, which may be why it isn't reported in the paper. This case keeps
+  `ewmaM=500` (Davidson's stated default), since 3000 reaches the identical
+  answer for ~6× the iterations; see the "flatPlate sub-cases" section above.
 
 ## Citation
 

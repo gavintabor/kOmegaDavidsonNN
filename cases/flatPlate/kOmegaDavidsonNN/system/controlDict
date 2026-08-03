@@ -22,20 +22,17 @@ startTime       0;
 
 stopAt          endTime;
 
-// kOmegaDavidsonNN needs far more iterations than kOmega to converge here.
-// At the flat-plate default ewmaM=500, endTime=15000 was enough (confirmed
-// bit-identical between successive writes). With ewmaM=3000 (see
-// constant/turbulenceProperties -- adopted to smooth a numerical-stiffness
-// kink around Re_theta~4600-4900), the slower coefficient averaging needs
-// far longer: still drifting ~7%/500 iterations at 15000, so bumped well
-// past that estimate to let it genuinely settle.
-endTime         100000;
+// kOmegaDavidsonNN needs far more iterations than kOmega to converge here:
+// the near-wall NN coefficients (sigma_k,NN, C_k,NN, C_omega2,NN) were still
+// drifting by 15-20% every 500 iterations at endTime=3000. Confirmed
+// converged (bit-identical between successive writes) by endTime=15000.
+endTime         15000;
 
 deltaT          1;
 
 writeControl    timeStep;
 
-writeInterval   2000;
+writeInterval   500;
 
 purgeWrite      3;
 
