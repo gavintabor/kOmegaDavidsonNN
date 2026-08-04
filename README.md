@@ -108,7 +108,7 @@ a leading-edge correlation. `plotFlatPlate.py` extracts profiles at fixed
 Re_θ targets (3000, 4000, 4500, 5500 — the third matches Davidson's Fig. 12
 comparison station, the fourth matches the DNS reference data below) rather
 than arbitrary fractions of the plate length, and overlays DNS (Sillero,
-Jiménez & Moser 2014 — the dataset Davidson's Fig. 12 actually cites, closest
+Jiménez & Moser 2013 — the dataset Davidson's Fig. 12 actually cites, closest
 available station locally at Re_θ=5500) on the U⁺, k⁺, and u'v'⁺ plots. The
 skin-friction plot uses Davidson's own correlation and ±6% band
 (`Cf = 2(1/0.384·ln(Re_θ)+4.127)⁻²`) on his exact linear Re_θ=3000–5000 /
