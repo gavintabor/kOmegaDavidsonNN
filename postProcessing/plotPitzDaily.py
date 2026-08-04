@@ -527,7 +527,12 @@ def plot_nn_coefficients(cases):
 
         plt.suptitle(f'NN coefficient fields — {c["label"]}')
         plt.tight_layout()
-        fname = f'NN_coefficients_{c["label"]}.png'
+        # Prefixed with the case name: plotChannelFlow.py names its own NN
+        # coefficient plot NN_coefficients_{label}.png too, and both cases'
+        # label is literally "kOmegaDavidsonNN" -- an unprefixed name here
+        # would collide when figures from multiple cases are collected
+        # together (e.g. uploading to a shared Overleaf project).
+        fname = f'NN_coefficients_pitzDaily_{c["label"]}.png'
         plt.savefig(fname, dpi=150)
         print(f"Saved: {fname}")
 

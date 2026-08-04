@@ -79,10 +79,13 @@ Davidson (2026) Fig. 8 closely, with U_bulk staying near both `kOmega` and
 DNS (24.33 vs 24.13/~24.1) and k⁺ peak rising from 3.11 to 5.75 (DNS 5.87).
 See "Known limitations" below for the friction-velocity fix this relies on.
 Post-processing: `python3 plotChannelFlow.py kOmega kOmegaDavidsonNN` from
-the `channelFlow5200/` directory. `NN_coefficients_kOmegaDavidsonNN.png`
+the `channelFlow5200/` directory. `NN_coefficients_channelFlow5200_kOmegaDavidsonNN.png`
 plots σ_k,NN and C_k,NN on a shared left axis and C_ω2,NN on its own right
 axis (both vs y), matching Davidson (2026) Fig. 8(d)'s combined-axes layout
-rather than three separately-scaled panels.
+rather than three separately-scaled panels. (Prefixed with the case name so
+it doesn't collide with `pitzDaily`'s own NN-coefficient plot when figures
+from multiple cases are collected together — both cases' sub-case is
+literally named `kOmegaDavidsonNN`.)
 
 ### flatPlate sub-cases
 
@@ -195,7 +198,7 @@ through the shear layer at every station from x/H=2 onward relative to
 repeatable difference, not noise.
 
 The 2D field plots (`k_field_comparison.png`, `U_field_comparison.png`,
-`omega_field_comparison.png`, `NN_coefficients_kOmegaDavidsonNN.png`,
+`omega_field_comparison.png`, `NN_coefficients_pitzDaily_kOmegaDavidsonNN.png`,
 `nut_ratio.png`) use `tricontourf` on a Delaunay triangulation of the
 cell-centre data, masked to drop triangles whose centroid falls in the solid
 step corner (x<0, y<0) — an unmasked triangulation bridges straight across
