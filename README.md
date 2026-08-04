@@ -137,10 +137,10 @@ limitations" below.
 ### pitzDaily sub-cases
 
 Standard OpenFOAM tutorial backward-facing-step geometry (step height
-H=25.4mm, expansion ratio 2:1, inlet U=10 m/s, ν=1×10⁻⁵ m²/s), not one of
-Davidson's own test cases — used here as a generic separated-flow sanity
-check. `Allrun` runs `blockMesh` then `simpleFoam` for both `kOmega` and
-`kOmegaDavidsonNN`, then `postProcessing/plotPitzDaily.py` computes the
+H=25.4mm, expansion ratio 2:1, inlet U=10 m/s, ν=1×10⁻⁵ m²/s, Re_H=25,400),
+not one of Davidson's own test cases — used here as a generic separated-flow
+sanity check. `Allrun` runs `blockMesh` then `simpleFoam` for both `kOmega`
+and `kOmegaDavidsonNN`, then `postProcessing/plotPitzDaily.py` computes the
 reattachment length directly from the converged U field and samples U/k
 profiles at fixed x/H stations via `postProcess -dict system/sampleDict`
 (the standalone `sample` utility used by older tutorials no longer exists in
@@ -150,7 +150,12 @@ v2606).
 |---|---|
 | `kOmega` | 7.32 |
 | `kOmegaDavidsonNN` | 7.31 |
-| Experiment (Pitz & Daily 1983) | ~8.0 |
+| Experiment (Pitz & Daily 1983, Re_H=22,000) | 7.0 |
+
+Good agreement, with a small residual gap plausibly explained by the
+Reynolds number mismatch (this case's Re_H=25,400 vs. the experiment's
+22,000 — the OpenFOAM tutorial geometry was never tuned to match Pitz &
+Daily's flow conditions exactly, just its step/expansion geometry).
 
 Both models are essentially indistinguishable in the mean velocity field —
 the U profiles at x/H = 1, 2, 4, 6, 8, 10 (`U_profiles.png`) overlay almost
@@ -159,12 +164,34 @@ through the shear layer at every station from x/H=2 onward relative to
 `kOmega` (`k_profiles.png`), without changing the mean flow — a real,
 repeatable difference, not noise.
 
+The 2D field plots (`k_field_comparison.png`, `U_field_comparison.png`,
+`omega_field_comparison.png`, `NN_coefficients_kOmegaDavidsonNN.png`,
+`nut_ratio.png`) use `tricontourf` on a Delaunay triangulation of the
+cell-centre data, masked to drop triangles whose centroid falls in the solid
+step corner (x<0, y<0) — an unmasked triangulation bridges straight across
+that corner and blends inlet-duct values into downstream-duct ones through
+solid geometry. All panels use equal-aspect axes so the domain isn't
+visually stretched. `omega_field_comparison.png` uses a log color scale,
+since ω∝1/y² at the wall spans several orders of magnitude more than the
+bulk flow and saturates a linear one. `k_field_comparison.png` and
+`omega_field_comparison.png` each end with an extra panel giving the
+`kOmegaDavidsonNN`/`kOmega` ratio directly (as does the standalone
+`nut_ratio.png` for turbulent viscosity), and `NN_coefficients_*.png` plots
+σ_k,NN/C_k,NN/C_ω2,NN as a fraction of their baseline (pre-NN-correction)
+value — 2.0/1.0/0.072 respectively, matching the reference lines already
+used in `plotChannelFlow.py`/`plotFlatPlate.py` — on a shared 0.4–1.2
+colorbar (all three stay within a fairly narrow band below baseline
+throughout the domain). Together these show `kOmegaDavidsonNN` raising both
+k and ν_t through the shear layer and downstream of reattachment relative to
+`kOmega`, while suppressing all three NN coefficients somewhat below their
+baseline values almost everywhere.
+
 No digitized Pitz & Daily (1983) velocity/turbulence profile dataset could
 be found publicly for comparison. The ERCOFTAC Classic Collection's
 similarly-named backward-facing-step case (case030) is actually a different
 experiment — Driver & Seegmiller (1985), with a different expansion ratio
 (1.125 vs. this case's 2.0) and a compressible free-stream (M=0.128) — so it
-was not used. The single reattachment-length figure above (~8.0, Pitz &
+was not used. The single reattachment-length figure above (7.0, Pitz &
 Daily 1983) is the only literature reference value available for this exact
 geometry.
 

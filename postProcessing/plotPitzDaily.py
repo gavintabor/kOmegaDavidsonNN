@@ -26,6 +26,8 @@ Requires: numpy, matplotlib
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.tri as mtri
+from matplotlib.colors import TwoSlopeNorm, LogNorm
 import os
 import sys
 import re
@@ -42,8 +44,11 @@ STYLES = [
     {'color': 'g', 'linestyle': '--', 'linewidth': 2},
 ]
 
-# Experimental reattachment length (Pitz & Daily 1983)
-REATTACHMENT_EXP = 8.0    # x/H
+# Experimental reattachment length: Pitz & Daily (1983) report x/H=7.0 at
+# Re_H=22,000. This case's Re_H=25,400 (U=10 m/s, H=0.0254m, nu=1e-5) is
+# somewhat higher -- the OpenFOAM tutorial geometry matches their step and
+# expansion ratio but was never tuned to match their flow conditions exactly.
+REATTACHMENT_EXP = 7.0    # x/H, Pitz & Daily (1983), Re_H=22,000
 # Step height H: the mesh floor drops from y=0 (inlet duct, blockMeshDict
 # vertices 0/3) to y=-0.0254 m (expanded duct, vertices 2/5) at x=0 -- i.e.
 # H=25.4mm, not 12.7mm. Using the wrong (half) value here previously made
@@ -65,6 +70,15 @@ X_REATTACH_MIN   = 0.032   # m (~2.5H downstream of step)
 
 # Inlet velocity (0/U fixedValue), used to normalise profile plots
 UINF = 10.0  # m/s
+
+# NN coefficient baseline values -- matches the reference lines used in
+# plotChannelFlow.py / plotFlatPlate.py's NN coefficient plots, so "fraction
+# of baseline" here means the same thing project-wide. sigmakNN/CkNN are the
+# model's own dimensionedScalar initial values (kOmegaDavidsonNN.C); the
+# Comega2NN reference is the standard Wilcox kOmega beta1, used everywhere
+# else in this repo as the "no NN correction" comparison point (the model's
+# own numerical initial value is 0.075 = 3/40, close but not the same).
+NN_BASELINE = {'sigmakNN': 2.0, 'CkNN': 1.0, 'Comega2NN': 0.072}
 
 # x/H locations for profile plots -- spans the recirculation zone and
 # straddles the actual reattachment point (~7.3H, see compute_reattachment)
@@ -152,6 +166,63 @@ def read_cell_centres(case_dir, component=0):
 
 
 # ----------------------------------------------------------------
+# Build a triangulation for contour plots, masked so it doesn't bridge
+# through the solid step corner
+# ----------------------------------------------------------------
+def masked_triangulation(x, y):
+    """
+    Delaunay-triangulate the (scattered, cell-centre) field data for use
+    with tricontourf. The domain is L-shaped -- the step corner (x<0, y<0,
+    upstream of the step and below the inlet-duct floor) is solid, but a
+    plain Delaunay triangulation is convex and will happily draw triangles
+    that cut straight across that corner, connecting inlet-duct cells to
+    downstream-duct cells through solid geometry. Any such triangle has its
+    centroid in the excluded region (no real cells are ever there), so it's
+    identified and masked out by centroid location alone.
+    """
+    triang = mtri.Triangulation(x, y)
+    xc = x[triang.triangles].mean(axis=1)
+    yc = y[triang.triangles].mean(axis=1)
+    triang.set_mask((xc < 0) & (yc < 0))
+    return triang
+
+
+def find_nn_and_baseline(cases):
+    """The first NN case (has sigmak_of) and first non-NN case, or (None, None)."""
+    nn_case   = next((c for c in cases if c['sigmak_of'] is not None), None)
+    base_case = next((c for c in cases if c['sigmak_of'] is None), None)
+    return nn_case, base_case
+
+
+def field_ratio(nn_case, base_case, key):
+    """nn_case[key] / base_case[key], or None if either is missing/mismatched."""
+    if nn_case is None or base_case is None:
+        return None
+    a, b = nn_case.get(key), base_case.get(key)
+    if a is None or b is None:
+        return None
+    if a.shape != b.shape:
+        print(f"  Warning: {key} ratio skipped -- {nn_case['label']} and "
+              f"{base_case['label']} have different cell counts "
+              f"({a.shape} vs {b.shape})")
+        return None
+    return a / b
+
+
+def plot_ratio_panel(ax, nn_case, ratio, field_label):
+    """Draw a NN/baseline ratio contour on ax, sharing the nut_ratio convention:
+    RdBu_r, centred at 1.0 (no NN effect), fixed 0-2 range."""
+    triang = masked_triangulation(nn_case['x'], nn_case['y'])
+    norm   = TwoSlopeNorm(vmin=0.0, vcenter=1.0, vmax=2.0)
+    cf = ax.tricontourf(triang, ratio, levels=np.linspace(0, 2, 81),
+                         cmap='RdBu_r', norm=norm, extend='both')
+    plt.colorbar(cf, ax=ax, label=field_label, ticks=np.linspace(0, 2, 9))
+    ax.set_xlabel('x (m)')
+    ax.set_ylabel('y (m)')
+    ax.set_aspect('equal')
+
+
+# ----------------------------------------------------------------
 # Compute reattachment length directly from U field
 # ----------------------------------------------------------------
 def compute_reattachment(x_all, y_all, Ux_all):
@@ -229,12 +300,16 @@ def read_case(case_dir):
     label    = os.path.basename(os.path.abspath(case_dir))
 
     # Read main fields
-    U_file = os.path.join(time_dir, 'U')
-    k_file = os.path.join(time_dir, 'k')
+    U_file     = os.path.join(time_dir, 'U')
+    k_file     = os.path.join(time_dir, 'k')
+    nut_file   = os.path.join(time_dir, 'nut')
+    omega_file = os.path.join(time_dir, 'omega')
 
-    Ux = read_of_vector_field(U_file, component=0) if os.path.exists(U_file) else None
-    Uy = read_of_vector_field(U_file, component=1) if os.path.exists(U_file) else None
-    k  = read_of_field(k_file)                     if os.path.exists(k_file) else None
+    Ux    = read_of_vector_field(U_file, component=0) if os.path.exists(U_file)     else None
+    Uy    = read_of_vector_field(U_file, component=1) if os.path.exists(U_file)     else None
+    k     = read_of_field(k_file)                     if os.path.exists(k_file)     else None
+    nut   = read_of_field(nut_file)                   if os.path.exists(nut_file)   else None
+    omega = read_of_field(omega_file)                 if os.path.exists(omega_file) else None
 
     # Read NN fields if available
     sk_file  = os.path.join(time_dir, 'sigmakNN')
@@ -263,7 +338,7 @@ def read_case(case_dir):
 
     return dict(
         label=label, latest=latest, time_dir=time_dir,
-        Ux=Ux, Uy=Uy, k=k, x=x, y=y, profiles=profiles,
+        Ux=Ux, Uy=Uy, k=k, nut=nut, omega=omega, x=x, y=y, profiles=profiles,
         sigmak_of=sigmak_of, ck_of=ck_of, comega2_of=comega2_of,
         x_reattachment=x_r, x_reattachment_H=xH
     )
@@ -417,40 +492,63 @@ def plot_nn_coefficients(cases):
     if not nn_cases:
         return
 
+    # Fields shown as a fraction of their baseline (pre-NN-correction) value,
+    # so all three share one interpretable scale: 1.0 = standard model,
+    # above/below = where the NN pushes the coefficient up/down.
+    fields = [
+        ('sigmak_of',  'sigmakNN',  r'$\sigma_{k,NN}$ / baseline'),
+        ('ck_of',      'CkNN',      r'$C_{k,NN}$ / baseline'),
+        ('comega2_of', 'Comega2NN', r'$C_{\omega2,NN}$ / baseline'),
+    ]
+
     for c in nn_cases:
         if c['x'] is None:
             continue
 
-        fig, axes = plt.subplots(1, 3, figsize=(14, 5))
+        present = [(key, base_key, title) for key, base_key, title in fields
+                   if c[key] is not None]
+        fig, axes = plt.subplots(len(present), 1, figsize=(14, 3.2*len(present)))
+        if len(present) == 1:
+            axes = [axes]
 
-        sc = axes[0].scatter(c['x'], c['y'], c=c['sigmak_of'],
-                             s=1, cmap='RdBu_r', vmin=0, vmax=2)
-        plt.colorbar(sc, ax=axes[0])
-        axes[0].set_xlabel('x (m)')
-        axes[0].set_ylabel('y (m)')
-        axes[0].set_title(r'$\sigma_{k,NN}$')
-
-        if c['ck_of'] is not None:
-            sc = axes[1].scatter(c['x'], c['y'], c=c['ck_of'],
-                                 s=1, cmap='RdBu_r', vmin=0, vmax=1)
-            plt.colorbar(sc, ax=axes[1])
-            axes[1].set_xlabel('x (m)')
-            axes[1].set_ylabel('y (m)')
-            axes[1].set_title(r'$C_{k,NN}$')
-
-        if c['comega2_of'] is not None:
-            sc = axes[2].scatter(c['x'], c['y'], c=c['comega2_of'],
-                                 s=1, cmap='RdBu_r', vmin=0, vmax=0.075)
-            plt.colorbar(sc, ax=axes[2])
-            axes[2].set_xlabel('x (m)')
-            axes[2].set_ylabel('y (m)')
-            axes[2].set_title(r'$C_{\omega2,NN}$')
+        triang = masked_triangulation(c['x'], c['y'])
+        norm = TwoSlopeNorm(vmin=0.4, vcenter=1.0, vmax=1.2)
+        levels = np.linspace(0.4, 1.2, 81)
+        for ax, (key, base_key, title) in zip(axes, present):
+            frac = c[key] / NN_BASELINE[base_key]
+            cf = ax.tricontourf(triang, frac, levels=levels, cmap='RdBu_r',
+                                 norm=norm, extend='both')
+            plt.colorbar(cf, ax=ax, label='fraction of baseline',
+                         ticks=np.linspace(0.4, 1.2, 9))
+            ax.set_xlabel('x (m)')
+            ax.set_ylabel('y (m)')
+            ax.set_aspect('equal')
+            ax.set_title(title)
 
         plt.suptitle(f'NN coefficient fields — {c["label"]}')
         plt.tight_layout()
         fname = f'NN_coefficients_{c["label"]}.png'
         plt.savefig(fname, dpi=150)
         print(f"Saved: {fname}")
+
+
+# ----------------------------------------------------------------
+# Plot the ratio of turbulent viscosity, NN model over baseline kOmega
+# ----------------------------------------------------------------
+def plot_nut_ratio(cases):
+    nn_case, base_case = find_nn_and_baseline(
+        [c for c in cases if c['nut'] is not None])
+    ratio = field_ratio(nn_case, base_case, 'nut')
+    if ratio is None:
+        return
+
+    fig, ax = plt.subplots(figsize=(14, 3.2))
+    plot_ratio_panel(ax, nn_case, ratio, r'$\nu_{t,NN} / \nu_{t,kOmega}$')
+    ax.set_title(f"Turbulent viscosity ratio — {nn_case['label']} / {base_case['label']}")
+
+    plt.tight_layout()
+    plt.savefig('nut_ratio.png', dpi=150)
+    print("Saved: nut_ratio.png")
 
 
 # ----------------------------------------------------------------
@@ -469,26 +567,30 @@ def main():
     for c in cases:
         xH = f"{c['x_reattachment_H']:.2f}" if c['x_reattachment_H'] is not None else "N/A"
         print(f"{c['label']:<40} {xH:>18} {'see log':>12}")
-    print(f"{'Experiment (Pitz & Daily 1983)':<40} {'~8.0':>18} {'—':>12}")
+    print(f"{'Experiment (Pitz & Daily 1983, Re_H=22000)':<40} {REATTACHMENT_EXP:>18.1f} {'—':>12}")
 
     # ----------------------------------------------------------------
-    # Plot 1: k field scatter plot (2D overview)
+    # Plot 1: k field contour plot (2D overview)
     # ----------------------------------------------------------------
     cases_with_coords = [c for c in cases if c['x'] is not None
                          and c['k'] is not None]
     if cases_with_coords:
-        fig, axes = plt.subplots(len(cases_with_coords), 1,
-                                 figsize=(12, 4*len(cases_with_coords)))
-        if len(cases_with_coords) == 1:
+        nn_case, base_case = find_nn_and_baseline(cases_with_coords)
+        k_ratio = field_ratio(nn_case, base_case, 'k')
+        nrows = len(cases_with_coords) + (1 if k_ratio is not None else 0)
+
+        fig, axes = plt.subplots(nrows, 1, figsize=(14, 3.2*nrows))
+        if nrows == 1:
             axes = [axes]
 
         for ax, c in zip(axes, cases_with_coords):
-            sc = ax.scatter(c['x'], c['y'], c=c['k'],
-                            s=1, cmap='hot_r',
-                            vmin=0, vmax=np.percentile(c['k'], 99))
-            plt.colorbar(sc, ax=ax, label=r'$k$ (m²/s²)')
+            triang = masked_triangulation(c['x'], c['y'])
+            cf = ax.tricontourf(triang, c['k'], levels=100, cmap='hot_r',
+                                 vmin=0, vmax=np.percentile(c['k'], 99))
+            plt.colorbar(cf, ax=ax, label=r'$k$ (m²/s²)')
             ax.set_xlabel('x (m)')
             ax.set_ylabel('y (m)')
+            ax.set_aspect('equal')
             ax.set_title(f"k field — {c['label']}")
             # Mark reattachment
             if c['x_reattachment'] is not None:
@@ -497,28 +599,35 @@ def main():
                            label=f"Reattachment x={c['x_reattachment']:.3f}m")
                 ax.legend(fontsize=10)
 
+        if k_ratio is not None:
+            ax = axes[-1]
+            plot_ratio_panel(ax, nn_case, k_ratio,
+                              f"$k_{{NN}}/k_{{standard}}$")
+            ax.set_title(f"k ratio — {nn_case['label']} / {base_case['label']}")
+
         plt.tight_layout()
         plt.savefig('k_field_comparison.png', dpi=150)
         print("\nSaved: k_field_comparison.png")
 
     # ----------------------------------------------------------------
-    # Plot 2: Ux field scatter plot
+    # Plot 2: Ux field contour plot
     # ----------------------------------------------------------------
     cases_with_U = [c for c in cases if c['x'] is not None
                     and c['Ux'] is not None]
     if cases_with_U:
         fig, axes = plt.subplots(len(cases_with_U), 1,
-                                 figsize=(12, 4*len(cases_with_U)))
+                                 figsize=(14, 3.2*len(cases_with_U)))
         if len(cases_with_U) == 1:
             axes = [axes]
 
         for ax, c in zip(axes, cases_with_U):
-            sc = ax.scatter(c['x'], c['y'], c=c['Ux'],
-                            s=1, cmap='RdBu_r',
-                            vmin=-2, vmax=np.percentile(c['Ux'], 99))
-            plt.colorbar(sc, ax=ax, label=r'$U_x$ (m/s)')
+            triang = masked_triangulation(c['x'], c['y'])
+            cf = ax.tricontourf(triang, c['Ux'], levels=100, cmap='RdBu_r',
+                                 vmin=-2, vmax=np.percentile(c['Ux'], 99))
+            plt.colorbar(cf, ax=ax, label=r'$U_x$ (m/s)')
             ax.set_xlabel('x (m)')
             ax.set_ylabel('y (m)')
+            ax.set_aspect('equal')
             ax.set_title(f"Velocity field — {c['label']}")
             if c['x_reattachment'] is not None:
                 ax.axvline(c['x_reattachment'], color='k',
@@ -531,12 +640,68 @@ def main():
         print("Saved: U_field_comparison.png")
 
     # ----------------------------------------------------------------
+    # Plot 2b: omega field contour plot
+    # ----------------------------------------------------------------
+    cases_with_omega = [c for c in cases if c['x'] is not None
+                        and c['omega'] is not None]
+    if cases_with_omega:
+        nn_case, base_case = find_nn_and_baseline(cases_with_omega)
+        omega_ratio = field_ratio(nn_case, base_case, 'omega')
+        nrows = len(cases_with_omega) + (1 if omega_ratio is not None else 0)
+
+        fig, axes = plt.subplots(nrows, 1, figsize=(14, 3.2*nrows))
+        if nrows == 1:
+            axes = [axes]
+
+        # Log scale: omega ~ 1/y^2 at the wall spans several orders of
+        # magnitude more than the bulk flow -- a linear scale saturates
+        # everywhere except a thin near-wall sliver and hides the bulk
+        # structure the comparison is actually about.
+        omega_min = min(np.percentile(c['omega'], 1) for c in cases_with_omega)
+        omega_max = max(c['omega'].max() for c in cases_with_omega)
+        omega_min = max(omega_min, 1.0)
+        log_norm   = LogNorm(vmin=omega_min, vmax=omega_max)
+        log_levels = np.logspace(np.log10(omega_min), np.log10(omega_max), 100)
+        decade_lo, decade_hi = int(np.floor(np.log10(omega_min))), int(np.ceil(np.log10(omega_max)))
+        tick_locs  = 10.0 ** np.arange(decade_lo, decade_hi + 1)
+
+        for ax, c in zip(axes, cases_with_omega):
+            triang = masked_triangulation(c['x'], c['y'])
+            cf = ax.tricontourf(triang, c['omega'], levels=log_levels,
+                                 cmap='viridis', norm=log_norm, extend='both')
+            plt.colorbar(cf, ax=ax, label=r'$\omega$ (1/s)', ticks=tick_locs)
+            ax.set_xlabel('x (m)')
+            ax.set_ylabel('y (m)')
+            ax.set_aspect('equal')
+            ax.set_title(f"Specific dissipation rate — {c['label']}")
+            if c['x_reattachment'] is not None:
+                ax.axvline(c['x_reattachment'], color='w',
+                           linestyle='--', linewidth=1,
+                           label=f"Reattachment x={c['x_reattachment']:.3f}m")
+                ax.legend(fontsize=10)
+
+        if omega_ratio is not None:
+            ax = axes[-1]
+            plot_ratio_panel(ax, nn_case, omega_ratio,
+                              r"$\omega_{NN}/\omega_{standard}$")
+            ax.set_title(f"omega ratio — {nn_case['label']} / {base_case['label']}")
+
+        plt.tight_layout()
+        plt.savefig('omega_field_comparison.png', dpi=150)
+        print("Saved: omega_field_comparison.png")
+
+    # ----------------------------------------------------------------
     # Plot 3: NN coefficient fields
     # ----------------------------------------------------------------
     plot_nn_coefficients(cases)
 
     # ----------------------------------------------------------------
-    # Plot 4: U and k profiles at fixed x/H sampling stations
+    # Plot 4: turbulent viscosity ratio, NN model over baseline kOmega
+    # ----------------------------------------------------------------
+    plot_nut_ratio(cases)
+
+    # ----------------------------------------------------------------
+    # Plot 5: U and k profiles at fixed x/H sampling stations
     # ----------------------------------------------------------------
     plot_profiles(cases)
 
