@@ -236,7 +236,13 @@ def read_wall_face_centres_x(case_dir, patch_name='bottom'):
 # tolerance far above the jitter but far below the column spacing.
 # ----------------------------------------------------------------
 def column_mask(x_all, x_target, dx):
-    candidates = x_all[np.abs(x_all - x_target) < 0.5 * dx]
+    # The last of the 150 evaluation stations sits exactly 0.5*dx from its
+    # nearest real cell column by construction, but x_target and dx come
+    # from two independently-rounded floating-point calculations -- their
+    # difference can land a few 1e-9 on either side of 0.5*dx. A strict "<"
+    # there intermittently drops that column entirely (silent NaN in
+    # compute_re_theta), so a small relative slack is added.
+    candidates = x_all[np.abs(x_all - x_target) < 0.5 * dx * (1 + 1e-6)]
     if len(candidates) == 0:
         return np.zeros_like(x_all, dtype=bool)
     nearest_x = candidates[np.argmin(np.abs(candidates - x_target))]

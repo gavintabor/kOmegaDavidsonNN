@@ -100,6 +100,36 @@ grading fractions from that reference data; it's a one-time provenance
 script, not part of `Allrun` (its inputs live in `literature/`, which isn't
 distributed with this repo — see "Not in the git repo" below).
 
+**Fixed bug**: the derived grading fractions match Davidson's total
+length/expansion-ratio/cell-count for the near-wall geometric region
+exactly, but OpenFOAM's `simpleGrading` (a single-ratio geometric series)
+doesn't reproduce his actual internal point distribution there — his
+mesh-generation code apparently isn't a pure fixed-ratio series either, so
+our regenerated mesh's cell-centre y-positions drift up to ~7.5% from his in
+that region (converging to an exact match beyond y≈5, i.e. the outer
+uniform 2/3 of the domain). An earlier version of this script interpolated
+Davidson's profile onto *his* y2d.dat-derived positions and wrote the
+result into our mesh by cell index, silently assuming the two meshes'
+cell-index-to-y-position mapping matched. Where the profile is steep near
+the wall, that 7.5% position error translated into inlet values up to 46%
+wrong (in k, at the wall-adjacent cell; 7.6% in U). Fixed by having the
+script read our own mesh's actual generated cell centres (`blockMesh` +
+`writeCellCentres`) and interpolating onto those directly — correct
+regardless of any grading-algorithm mismatch. The effect on results is
+small but real (see updated numbers below).
+
+Rerunning after that fix exposed a second, unrelated latent bug: `kOmega`'s
+Re_θ growth came out fractionally slower (max ≈5496 vs. the previous
+≈5564), landing its last profile-extraction target (Re_θ=5500) right on the
+domain's very last streamwise station — where `column_mask`'s tolerance
+check (`< 0.5*dx`) failed by ~3e-9 due to ordinary floating-point rounding,
+silently dropping that station (`compute_re_theta` returned NaN there,
+poisoning `np.interp` for any nearby target). This is why `kOmega` was
+missing from the last panel of `Uplus_profiles.png`/`kplus_profiles.png`/
+`uv_profiles.png` after the inlet-profile fix — not a new problem, just a
+previously-dormant edge case now landed on. Fixed by adding a small
+relative tolerance to the boundary check.
+
 Re_θ(x) is computed from the actual velocity field's momentum thickness
 (using the *local* edge velocity at each station, not a fixed freestream
 reference — this domain's finite height causes mild core-flow acceleration
@@ -117,7 +147,7 @@ axis) and C_ω2,NN (right axis) against y/δ₉₉ at each station — all five
 now structurally match Davidson's Fig. 12(a)-(e) rather than the differently
 axed/binned plots this port previously produced.
 
-**Known open finding**: around Re_θ≈4600–4900, `kOmegaDavidsonNN` shows a
+**Known open finding**: around Re_θ≈4750–4900, `kOmegaDavidsonNN` shows a
 sharp (near-discontinuous) transition in near-wall k, ν_t, and the NN
 coefficients — a ~3× collapse in k over about 4 cells, driven by the
 σ_k,NN/C_k,NN/C_ω2,NN ↔ k feedback. This is confirmed to be a genuine
@@ -382,7 +412,7 @@ relaxationFactors
   multiple or separated walls (`pitzDaily`, `periodicHill`) — those still
   use the same domain-wide average, which is a coarser approximation there.
 - **`flatPlate`'s σ_k,NN/C_k,NN/C_ω2,NN ↔ k feedback has a genuine
-  near-discontinuous transition around Re_θ≈4600–4900**, independent of the
+  near-discontinuous transition around Re_θ≈4750–4900**, independent of the
   EWMA averaging window. Near-wall k, ν_t, and the NN coefficients undergo a
   ~3× collapse over a handful of cells; confirmed to persist identically
   (same location, same magnitude) whether `ewmaM` (Davidson Eq. 18) is his
