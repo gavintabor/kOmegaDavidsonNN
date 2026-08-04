@@ -5,10 +5,10 @@ cd ${0%/*} || exit 1
 echo "=== pitzDaily ==="
 
 echo "--- Running standard kOmega ---"
-( cd kOmega && runApplication simpleFoam )
+( cd kOmega && runApplication blockMesh && runApplication simpleFoam )
 
 echo "--- Running kOmegaDavidsonNN ---"
-( cd kOmegaDavidsonNN && runApplication simpleFoam )
+( cd kOmegaDavidsonNN && runApplication blockMesh && runApplication simpleFoam )
 
 echo "--- Post-processing ---"
 python3 ../../postProcessing/plotPitzDaily.py kOmegaDavidsonNN kOmega

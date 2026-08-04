@@ -134,6 +134,47 @@ comparing a fully-converged `ewmaM=500` run against an under-converged
 since 3000 gives an identical answer for ~6× the iterations. See "Known
 limitations" below.
 
+### pitzDaily sub-cases
+
+Standard OpenFOAM tutorial backward-facing-step geometry (step height
+H=25.4mm, expansion ratio 2:1, inlet U=10 m/s, ν=1×10⁻⁵ m²/s), not one of
+Davidson's own test cases — used here as a generic separated-flow sanity
+check. `Allrun` runs `blockMesh` then `simpleFoam` for both `kOmega` and
+`kOmegaDavidsonNN`, then `postProcessing/plotPitzDaily.py` computes the
+reattachment length directly from the converged U field and samples U/k
+profiles at fixed x/H stations via `postProcess -dict system/sampleDict`
+(the standalone `sample` utility used by older tutorials no longer exists in
+v2606).
+
+| Sub-case | Reattachment x/H |
+|---|---|
+| `kOmega` | 7.32 |
+| `kOmegaDavidsonNN` | 7.31 |
+| Experiment (Pitz & Daily 1983) | ~8.0 |
+
+Both models are essentially indistinguishable in the mean velocity field —
+the U profiles at x/H = 1, 2, 4, 6, 8, 10 (`U_profiles.png`) overlay almost
+exactly. `kOmegaDavidsonNN` does measurably raise turbulent kinetic energy
+through the shear layer at every station from x/H=2 onward relative to
+`kOmega` (`k_profiles.png`), without changing the mean flow — a real,
+repeatable difference, not noise.
+
+No digitized Pitz & Daily (1983) velocity/turbulence profile dataset could
+be found publicly for comparison. The ERCOFTAC Classic Collection's
+similarly-named backward-facing-step case (case030) is actually a different
+experiment — Driver & Seegmiller (1985), with a different expansion ratio
+(1.125 vs. this case's 2.0) and a compressible free-stream (M=0.128) — so it
+was not used. The single reattachment-length figure above (~8.0, Pitz &
+Daily 1983) is the only literature reference value available for this exact
+geometry.
+
+**Known-bug note**: an earlier version of `plotPitzDaily.py` used
+`STEP_HEIGHT=0.0127` (half the actual 0.0254m mesh step, misread from the
+blockMeshDict), which silently doubled every x/H figure it reported —
+reattachment length came out as ~14.6 instead of ~7.3, and the sampling
+lines' upper end (`0.0508`) actually extended past the real top wall at
+`0.0254`. Both are fixed; the numbers in the table above are correct.
+
 ### periodicHill sub-cases
 
 The periodic hill case (Re=10565, ν=2.650×10⁻⁶ m²/s, U_b=1 m/s, H=28 mm) provides

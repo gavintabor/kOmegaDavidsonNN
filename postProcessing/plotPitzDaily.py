@@ -8,6 +8,8 @@ Produces plots of:
     2. U field 2D overview
     3. k field 2D overview
     4. NN coefficient fields (if available)
+    5. U and k profiles at fixed x/H stations (sampling lines), run
+       automatically via `postProcess -dict system/sampleDict`
 
 Usage:
     python3 plotPitzDaily.py case1_dir [case2_dir] ...
@@ -27,6 +29,7 @@ import matplotlib.pyplot as plt
 import os
 import sys
 import re
+import subprocess
 
 plt.rcParams.update({'font.size': 14})
 
@@ -41,17 +44,31 @@ STYLES = [
 
 # Experimental reattachment length (Pitz & Daily 1983)
 REATTACHMENT_EXP = 8.0    # x/H
-STEP_HEIGHT      = 0.0127  # m (step height H for pitzDaily tutorial)
+# Step height H: the mesh floor drops from y=0 (inlet duct, blockMeshDict
+# vertices 0/3) to y=-0.0254 m (expanded duct, vertices 2/5) at x=0 -- i.e.
+# H=25.4mm, not 12.7mm. Using the wrong (half) value here previously made
+# every x/H figure (reattachment length, profile station positions) read
+# almost exactly double its true value.
+STEP_HEIGHT      = 0.0254  # m (step height H for pitzDaily tutorial)
 
-# Near-wall threshold: cells with y < this are treated as wall-adjacent
-# pitzDaily has a tall recirculation zone — needs a large threshold
-Y_WALL_THRESHOLD = 0.025   # m (~2H)
+# Downstream of the step the floor drops from y=0 (inlet channel) to
+# y=-0.0254 m (expanded channel) -- "near-wall" must be measured relative to
+# THIS floor, not y=0. WALL_BAND selects a thin band of cells just above it.
+LOWER_WALL_Y = -0.0254     # m, downstream lower-wall y-coordinate
+WALL_BAND    = 0.004       # m (~0.3H)
 
-# Minimum x to start looking for reattachment (avoid step corner artefacts)
-X_REATTACH_MIN   = 0.02    # m (~1.5H downstream of step)
+# Minimum x to start looking for reattachment: skips the small corner-vortex
+# complex immediately behind the step (a real secondary eddy with its own
+# sign changes in Ux, extending to x~0.031 m here) so the search finds the
+# primary recirculation zone's reattachment, not a corner-eddy artefact.
+X_REATTACH_MIN   = 0.032   # m (~2.5H downstream of step)
 
-# x/H locations for profile plots
-PROFILE_X = [0.5, 1.0, 2.0, 3.0, 4.0, 5.0]  # x/H
+# Inlet velocity (0/U fixedValue), used to normalise profile plots
+UINF = 10.0  # m/s
+
+# x/H locations for profile plots -- spans the recirculation zone and
+# straddles the actual reattachment point (~7.3H, see compute_reattachment)
+PROFILE_X = [1.0, 2.0, 4.0, 6.0, 8.0, 10.0]  # x/H
 
 
 # ----------------------------------------------------------------
@@ -147,11 +164,10 @@ def compute_reattachment(x_all, y_all, Ux_all):
     if x_all is None or y_all is None or Ux_all is None:
         return None, None
 
-    # Select cells downstream of the step within Y_WALL_THRESHOLD
-    # y > -0.002 excludes step face cells which have negative y
-    mask = (y_all < Y_WALL_THRESHOLD) & (y_all > -0.002) & (x_all > X_REATTACH_MIN)
+    # Select cells in a thin band just above the downstream lower wall
+    mask = (y_all < LOWER_WALL_Y + WALL_BAND) & (x_all > X_REATTACH_MIN)
     if not np.any(mask):
-        print(f"  Warning: no near-wall cells found with y < {Y_WALL_THRESHOLD} m and x > {X_REATTACH_MIN} m")
+        print(f"  Warning: no near-wall cells found with y < {LOWER_WALL_Y + WALL_BAND} m and x > {X_REATTACH_MIN} m")
         print(f"  Min y for x > {X_REATTACH_MIN}: {y_all[x_all > X_REATTACH_MIN].min():.6f} m")
         return None, None
 
@@ -239,9 +255,15 @@ def read_case(case_dir):
     else:
         print(f"  Reattachment length: could not determine")
 
+    # Sample U and k profiles at fixed x/H stations
+    x_positions_m = [xh * STEP_HEIGHT for xh in PROFILE_X]
+    write_sample_dict(case_dir, x_positions_m)
+    run_sample(case_dir)
+    profiles = read_profiles(case_dir, latest, len(PROFILE_X))
+
     return dict(
         label=label, latest=latest, time_dir=time_dir,
-        Ux=Ux, Uy=Uy, k=k, x=x, y=y,
+        Ux=Ux, Uy=Uy, k=k, x=x, y=y, profiles=profiles,
         sigmak_of=sigmak_of, ck_of=ck_of, comega2_of=comega2_of,
         x_reattachment=x_r, x_reattachment_H=xH
     )
@@ -253,49 +275,138 @@ def read_case(case_dir):
 def write_sample_dict(case_dir, x_positions_m):
     """
     Write a sampleDict to extract U and k profiles at specified x locations.
+    OpenFOAM v2606's postProcess -dict expects a functionObject-list-style
+    file: one or more NAMED top-level entries (like controlDict's `functions`
+    block, but without the wrapping `functions{}`), not a bare {type sets;...}
+    at file scope -- the older bare form is silently ignored (no error, no
+    output) by the modern postProcess -dict reader.
     """
-    lines_str = '\n'.join([
-        f'        ({x:.6f} -0.0254 0.0)\n'
-        f'        ({x:.6f}  0.0508 0.0)'
-        for x in x_positions_m
-    ])
-
-    sample_dict = f"""FoamFile
-{{
+    sample_dict = """FoamFile
+{
     version     2.0;
     format      ascii;
     class       dictionary;
     object      sampleDict;
-}}
+}
 
-type            sets;
-libs            (sampling);
-interpolationScheme cellPoint;
-setFormat       raw;
+functions
+{
 
-fields (U k);
+profiles
+{
+    type            sets;
+    libs            (sampling);
+    interpolationScheme cellPoint;
+    setFormat       raw;
 
-sets
-(
+    fields (U k);
+
+    sets
+    (
 """
     for i, x in enumerate(x_positions_m):
         sample_dict += f"""
-    profile_x{i}
-    {{
-        type        uniform;
-        axis        y;
-        start       ({x:.6f} -0.0254 0.0);
-        end         ({x:.6f}  0.0508 0.0);
-        nPoints     100;
-    }}
+        profile_x{i}
+        {{
+            type        uniform;
+            axis        y;
+            start       ({x:.6f} {LOWER_WALL_Y:.6f} 0.0);
+            end         ({x:.6f} {-LOWER_WALL_Y:.6f} 0.0);
+            nPoints     200;
+        }}
 """
-    sample_dict += ");\n"
+    sample_dict += "    );\n}\n\n}\n"
 
     outpath = os.path.join(case_dir, 'system', 'sampleDict')
     with open(outpath, 'w') as f:
         f.write(sample_dict)
     print(f"  Written: {outpath}")
-    print(f"  Run: postProcess -func sample -latestTime")
+
+
+# ----------------------------------------------------------------
+# Run the sample function object and read the resulting profiles
+# ----------------------------------------------------------------
+def run_sample(case_dir):
+    result = subprocess.run(
+        ['postProcess', '-dict', 'system/sampleDict', '-fields', '(U k)',
+         '-latestTime'],
+        cwd=case_dir, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"  Warning: postProcess sampling failed in {case_dir}")
+        print(result.stdout[-2000:])
+        print(result.stderr[-2000:])
+
+
+def read_profiles(case_dir, latest, n_stations):
+    """
+    Read the profile_xN_k_U.xy files written by run_sample().
+    Columns: y, k, Ux, Uy, Uz.
+    Returns a list of dicts (one per station) or None if unavailable.
+    """
+    sample_dir = os.path.join(case_dir, 'postProcessing', 'profiles', latest)
+    profiles = []
+    for i in range(n_stations):
+        fpath = os.path.join(sample_dir, f'profile_x{i}_k_U.xy')
+        if not os.path.exists(fpath):
+            profiles.append(None)
+            continue
+        data = np.loadtxt(fpath)
+        profiles.append(dict(
+            y=data[:, 0], k=data[:, 1], Ux=data[:, 2], Uy=data[:, 3]))
+    return profiles
+
+
+# ----------------------------------------------------------------
+# Plot U and k profiles at fixed x/H sampling stations
+# ----------------------------------------------------------------
+def plot_profiles(cases):
+    cases_with_profiles = [c for c in cases if c.get('profiles') is not None]
+    if not cases_with_profiles:
+        return
+
+    colors = {c['label']: STYLES[i % len(STYLES)]['color']
+              for i, c in enumerate(cases_with_profiles)}
+
+    n = len(PROFILE_X)
+    fig, axes = plt.subplots(1, n, figsize=(3 * n, 5), sharey=True)
+    for j, xH in enumerate(PROFILE_X):
+        ax = axes[j]
+        for c in cases_with_profiles:
+            prof = c['profiles'][j]
+            if prof is None:
+                continue
+            ax.plot(prof['Ux'] / UINF, prof['y'] / STEP_HEIGHT,
+                    color=colors[c['label']], label=c['label'])
+        ax.axhline(0, color='k', linewidth=0.5)
+        ax.set_title(f'x/H={xH:g}')
+        ax.set_xlabel(r'$U_x/U_{ref}$')
+        if j == 0:
+            ax.set_ylabel(r'$y/H$')
+    axes[-1].legend(fontsize=9)
+    plt.suptitle('Velocity profiles at fixed x/H stations')
+    plt.tight_layout()
+    plt.savefig('U_profiles.png', dpi=150)
+    print("Saved: U_profiles.png")
+
+    fig, axes = plt.subplots(1, n, figsize=(3 * n, 5), sharey=True)
+    for j, xH in enumerate(PROFILE_X):
+        ax = axes[j]
+        for c in cases_with_profiles:
+            prof = c['profiles'][j]
+            if prof is None:
+                continue
+            ax.plot(prof['k'] / UINF**2, prof['y'] / STEP_HEIGHT,
+                    color=colors[c['label']], label=c['label'])
+        ax.axhline(0, color='k', linewidth=0.5)
+        ax.set_title(f'x/H={xH:g}')
+        ax.set_xlabel(r'$k/U_{ref}^2$')
+        if j == 0:
+            ax.set_ylabel(r'$y/H$')
+    axes[-1].legend(fontsize=9)
+    plt.suptitle('Turbulent kinetic energy profiles at fixed x/H stations')
+    plt.tight_layout()
+    plt.savefig('k_profiles.png', dpi=150)
+    print("Saved: k_profiles.png")
 
 
 # ----------------------------------------------------------------
@@ -425,17 +536,9 @@ def main():
     plot_nn_coefficients(cases)
 
     # ----------------------------------------------------------------
-    # Write sampleDict for profile extraction
+    # Plot 4: U and k profiles at fixed x/H sampling stations
     # ----------------------------------------------------------------
-    x_positions_m = [x * STEP_HEIGHT for x in PROFILE_X]
-    print(f"\nWriting sampleDict for profile extraction...")
-    for case_dir in case_dirs:
-        write_sample_dict(case_dir, x_positions_m)
-
-    print("\nTo extract velocity and k profiles at x/H locations, run:")
-    print("  postProcess -func sample -latestTime")
-    print("in each case directory, then rerun this script with --profiles flag")
-    print("(profile plotting requires sample output)")
+    plot_profiles(cases)
 
     plt.show()
 
