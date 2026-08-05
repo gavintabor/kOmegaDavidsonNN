@@ -237,20 +237,74 @@ lines' upper end (`0.0508`) actually extended past the real top wall at
 
 ### periodicHill sub-cases
 
-The periodic hill case (Re=10565, ν=2.650×10⁻⁶ m²/s, U_b=1 m/s, H=28 mm) provides
-four sub-cases for a two-stage steady → transient workflow:
+The periodic hill case (Re=10565, ν=2.643×10⁻⁶ m²/s, U_b=1 m/s, H=28 mm) is
+Section 5.3 of Davidson (2026) — the only recirculating-flow test case, and
+the one this port's setup diverges from most, deliberately. The baseline
+(`steadyState`, Spalart-Allmaras → `transient`, SA-IDDES) is a pristine,
+unmodified copy of `$WM_PROJECT_DIR/tutorials/incompressible/pimpleFoam/LES/periodicHill`
+— OpenFOAM's own verification case for this exact geometry — used as-is for
+provenance rather than a from-scratch reproduction of Davidson's own
+(different) numerics.
 
-| Sub-case | Solver | Model | Purpose |
-|---|---|---|---|
-| `steadyState` | simpleFoam | Spalart-Allmaras | Tutorial baseline initialisation |
-| `steadyState_kOmegaDavidsonNN` | simpleFoam | kOmegaDavidsonNN | Steady-state initialisation for transient |
-| `transient` | pimpleFoam | SA-IDDES | Tutorial LES reference |
-| `transient_kOmegaDavidsonNN` | pimpleFoam | kOmegaDavidsonNN | NN-corrected RANS transient |
+| Sub-case | Solver | Model | Mesh | Purpose |
+|---|---|---|---|---|
+| `steadyState` | simpleFoam | Spalart-Allmaras | 3D (200×160×80, periodic front/back) | Tutorial baseline initialisation |
+| `transient` | pimpleFoam | SA-IDDES | 3D, inherited from `steadyState` | Tutorial LES reference |
+| `steadyState_kOmegaDavidsonNN` | simpleFoam | kOmegaDavidsonNN | 3D, same as baseline | Diagnostic only — see below |
+| `steadyState_kOmegaDavidsonNN_2D` | simpleFoam | kOmegaDavidsonNN | 1-cell-thick (200×160×1, `empty` front/back) | Diagnostic only — see below |
+| `transient_kOmegaDavidsonNN_2D` | pimpleFoam | kOmegaDavidsonNN | Same 1-cell-thick mesh, own fresh start | NN-corrected transient result |
 
-The two steady-state cases use second-order linearUpwind momentum convection and one
-non-orthogonal corrector.  The `transient_kOmegaDavidsonNN` case links its processor
-directories from `steadyState_kOmegaDavidsonNN` and runs for 10 through-flow times (2.52 s),
-with time-averaging of U, p, k, R, sigmakNN, CkNN and Comega2NN.
+**Why 1-cell-thick, not Davidson's 2-cell mesh.** Davidson's own hill mesh
+is 2 cells thick in z with slip walls, not truly 2D — necessary because his
+solver (`pyCALC-LES`) has no equivalent of OpenFOAM's `empty` patch type, so
+a genuinely 1-cell direction gives it a degenerate self-referencing stencil.
+OpenFOAM's `empty` patch removes the direction from the discretisation
+entirely, so `steadyState_kOmegaDavidsonNN_2D`/`transient_kOmegaDavidsonNN_2D`
+use a real 1-cell mesh (`front`/`back` type `empty`) — a closer match to
+his 2D *intent* than his own workaround, and ~80× fewer cells. Only the
+`kOmegaDavidsonNN` sub-cases move to this mesh; the baseline keeps the full
+3D periodic mesh, since SA-IDDES is scale-resolving and genuinely needs it.
+
+**Why `transient_kOmegaDavidsonNN_2D` starts fresh at t=0, not restarted
+from a steady solution.** The obvious approach — steady SIMPLE init, then
+restart transient from it, mirroring the baseline's own SA→SA-IDDES
+workflow — was tried first and doesn't work for this model: the steady
+`kOmegaDavidsonNN` solve converges (by its own residual metric) to a state
+with a severe, spatially broad `k`/`ω` blow-up in a band along the wall
+just behind the hill crest (`k` up to ~10⁶, confirmed by direct field
+instrumentation to be spatially real, not a single-cell artifact). This
+is a pseudo-time SIMPLE artifact, not a numerics bug in this port:
+restarting `transient_kOmegaDavidsonNN_2D` from it diverges to a floating
+point exception *instantly* under real time-accurate stepping, regardless
+of how small a timestep is used (tried down to 1e-72 s). Davidson's own
+paper explains why no steady fixed point should be expected there at all
+— Section 5.3 never runs a steady RANS stage for periodic hill (his own
+`pyCALC-RANS` "did not succeed" adjusting the driving pressure-gradient
+coefficient for this flow); he goes straight to unsteady `pyCALC-LES` from
+a fresh start. The same section separately notes DNS shows a large-scale
+flapping motion near the crest that steady RANS cannot represent — plausibly
+*why* no steady solution exists there: the physical attractor at that
+location isn't a fixed point.
+
+`transient_kOmegaDavidsonNN_2D` therefore starts from the same small-uniform
+initial condition as the steady case (only the mesh is shared, via an
+`Allrun`-time symlink, not the steady case's fields) and runs `pimpleFoam`
+directly for ~44 through-flows (t=0–11.1 s, matching Davidson's own
+40,000-step run), with adaptive timestepping (`maxCo 0.5`). This converges
+cleanly to a fully bounded result (`k` max ≈0.1, vs ≈10⁶ restarting from
+steady), with `U`/`p` time-averaged over the last ~20% of the run and
+profiles sampled at Davidson's Fig. 14 x/H stations for DNS comparison.
+
+`steadyState_kOmegaDavidsonNN`/`steadyState_kOmegaDavidsonNN_2D` are kept
+as diagnostic cases even though they're no longer part of the transient
+run's initialisation path: their saturated NN coefficients (pinned at
+their clip bounds along most of the wall) independently corroborate a
+finding in Davidson's own paper — Section 5.3 reports σ_k,NN/C_k,NN/C_ω2,NN
+constant across 88% of his domain for the same reason (NN inputs clipped
+to the training range), and shows that substituting those constant values
+everywhere reproduces the full model's predictions almost exactly. So the
+saturation itself is expected model behaviour on this flow, not a bug —
+useful to keep visible rather than discard.
 
 ## Usage in your own cases
 
@@ -399,21 +453,33 @@ relaxationFactors
   3D or highly separated flows has not been validated.
 - The friction velocity used to normalise the NN's own input features
   (`x0 = ν_t/(y·u_τ)`, `x1 = τ_tot/u_τ²`, Davidson Eq. 17) is computed
-  **once from the wall-adjacent cells** (viscous-sublayer formula,
-  area-averaged over all wall patches) and held constant across the whole
-  domain — matching Davidson's reference Python implementation, where
-  `u_τ` is computed once per wall-normal column and broadcast unchanged
-  along it (see `literature/pythons-rans-code-RANS-open/channel-10000-half-channel-NN-PINN-.../modify_case.py`).
-  An earlier version of this port instead evaluated `Cmu^0.25·√k` locally
-  at every cell, which couples the NN's inputs to the very k field the
-  model is boosting and was found to distort ν_t substantially outside the
-  immediate near-wall region (up to ~75% off from the standard model at
-  the channel centreline) — degrading both the U⁺ and k⁺ match to DNS.
-  This single-domain-average approach is correct for a homogeneous channel
-  (`channelFlow5200`) and a reasonable approximation for a slowly-growing
-  boundary layer (`flatPlate`), but does **not** yet handle cases with
-  multiple or separated walls (`pitzDaily`, `periodicHill`) — those still
-  use the same domain-wide average, which is a coarser approximation there.
+  **per wall-normal column** — the viscous-sublayer formula
+  (`u* = √(ν·|U|/y)`) evaluated at each wall face, then broadcast to every
+  cell whose nearest wall face is that one (constant along y, varying along
+  the wall), via OpenFOAM's `wallDistAddressing` nearest-wall-face
+  transport. This matches Davidson's reference Python implementation
+  exactly (see `literature/pythons-rans-code-RANS-open/channel-10000-half-channel-NN-PINN-.../modify_case.py`,
+  where `u_τ` is computed once per wall-normal column and broadcast
+  unchanged along it) and applies uniformly to every case using this
+  model. An earlier version of this port instead evaluated `Cmu^0.25·√k`
+  locally at every cell, which couples the NN's inputs to the very k field
+  the model is boosting and was found to distort ν_t substantially outside
+  the immediate near-wall region — that approach is not used. A version
+  after that used a single domain-wide average instead of per-column
+  (exact for `channelFlow5200`'s homogeneous wall, a reasonable
+  approximation for `flatPlate`'s slowly-growing boundary layer, but too
+  coarse for `periodicHill`'s multi-regime wall); per-column normalisation
+  replaces it everywhere, confirmed regression-clean on `channelFlow5200`
+  (unchanged U_bulk/k⁺ vs previously documented values). For `periodicHill`
+  specifically, switching to per-column did **not** resolve the NN
+  coefficient saturation there — confirmed via direct field
+  instrumentation that u_τ genuinely varies ~20× along the wall under the
+  new method, yet the coefficients still saturate at their clip bounds
+  almost everywhere. That turned out to be expected model behaviour on
+  this flow rather than a normalisation artifact — see the "periodicHill
+  sub-cases" section above. `pitzDaily` (also a multi/separated-wall case)
+  inherits the same per-column change but has not yet been specifically
+  re-validated against it.
 - **`flatPlate`'s σ_k,NN/C_k,NN/C_ω2,NN ↔ k feedback has a genuine
   near-discontinuous transition around Re_θ≈4750–4900**, independent of the
   EWMA averaging window. Near-wall k, ν_t, and the NN coefficients undergo a
