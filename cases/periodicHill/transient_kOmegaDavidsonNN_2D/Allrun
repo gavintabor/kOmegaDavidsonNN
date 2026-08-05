@@ -1,0 +1,23 @@
+#!/bin/sh
+cd "${0%/*}" || exit                                # Run from this directory
+. ${WM_PROJECT_DIR:?}/bin/tools/RunFunctions        # Tutorial run functions
+#------------------------------------------------------------------------------
+
+canCompile || exit 0    # Dynamic code
+
+# Matches Davidson's actual method (Sec. 5.3): no steady RANS
+# initialisation stage at all -- the unsteady solver is run directly from
+# a fresh initial condition and marches to a statistically steady state.
+# (An earlier version of this case restarted from
+# steadyState_kOmegaDavidsonNN_2D's converged field; that field's near-crest
+# k/omega blow-up turned out to be a pseudo-time SIMPLE artifact that
+# diverged instantly under real time-accurate stepping, however small.
+# Only the mesh is reused here -- not the steady case's fields.)
+echo "Linking mesh from steadyState_kOmegaDavidsonNN_2D"
+ln -sf ../../steadyState_kOmegaDavidsonNN_2D/constant/polyMesh constant/polyMesh
+
+restore0Dir
+
+runApplication $(getApplication)
+
+#------------------------------------------------------------------------------

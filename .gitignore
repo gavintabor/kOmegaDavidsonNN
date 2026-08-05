@@ -41,7 +41,11 @@ dynamicCode/
 # on every Allrun like the other cases' meshes, but its polyMesh files
 # exceed GitHub's size limits (100MB+) unlike the smaller cases, so it
 # can't be tracked the way channelFlow5200/flatPlate/pitzDaily's meshes are.
-cases/periodicHill/*/constant/polyMesh/
+# (No trailing slash: also matches the transient_*_2D sub-cases' polyMesh,
+# which is a symlink to their steady counterpart's mesh rather than a real
+# directory, recreated fresh by Allrun every run like their processor*
+# links -- same reasoning, not source data.)
+cases/periodicHill/*/constant/polyMesh
 
 # writeCellCentres output, auto-generated into 0/ by the plotting scripts
 # on demand -- goes stale (wrong size) if the mesh later changes, so it

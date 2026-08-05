@@ -1,0 +1,184 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  v2606                                 |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      controlDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+libs            ("libkOmegaDavidsonNN.so");
+
+application     pimpleFoam;
+
+startFrom       startTime;
+
+startTime       0;
+
+stopAt          endTime;
+
+// Matches Davidson's ~44 through-flows (L/Ub = 0.252 m / 1 m/s = 0.252 s
+// per through-flow; 44 * 0.252 = 11.088 s), run from a fresh t=0 start.
+endTime         11.1;
+
+deltaT          1e-6;   // small initial step, grown by adjustTimeStep
+
+writeControl    timeStep;
+
+writeInterval   500;
+
+purgeWrite      5;
+
+writeFormat     binary;
+
+writePrecision  8;
+
+writeCompression off;
+
+timeFormat      general;
+
+timePrecision   10;
+
+runTimeModifiable true;
+
+adjustTimeStep  yes;
+maxCo           0.5;
+maxDeltaT       1e-4;    // stock tutorial's fixed step, used as a ceiling
+
+functions
+{
+    fieldAverage1
+    {
+        type            fieldAverage;
+        libs            (fieldFunctionObjects);
+        writeControl    writeTime;
+        // Davidson averages only the last 100 of 40,000 steps (~0.25% of
+        // the run); with adaptive timestepping here that's too short a
+        // window for smooth statistics, so average the last ~20% instead
+        // (still a late-run tail, same intent).
+        timeStart       9.0;
+        fields
+        (
+            U
+            {
+                mean        on;
+                prime2Mean  on;
+                base        time;
+            }
+
+            p
+            {
+                mean        on;
+                prime2Mean  on;
+                base        time;
+            }
+        );
+    }
+
+    // No columnAverage here -- that existed to average over the 3D
+    // baseline's periodic spanwise direction. This case is a 1-cell-thick
+    // (empty front/back) 2D approximation, so there is no spanwise
+    // direction to average over; fieldAverage1's UMean/UPrime2Mean are
+    // used directly in `sample` below instead.
+
+    sample
+    {
+        type            sets;
+        libs            (sampling);
+        interpolationScheme cellPoint;
+        setFormat       raw;
+        executeControl  onEnd;
+        writeControl    onEnd;
+
+        fields
+        (
+            U
+            UMean
+            UPrime2Mean
+        );
+
+        sets
+        {
+            xbyh0.05
+            {
+                type            face;
+                axis            y;
+                start           (0.0014 0 0.063);
+                end             (0.0014 1 0.063);
+            }
+            xbyh0.5
+            {
+                type            face;
+                axis            y;
+                start           (0.014 0 0.063);
+                end             (0.014 1 0.063);
+            }
+            xbyh1
+            {
+                type            face;
+                axis            y;
+                start           (0.028 0 0.063);
+                end             (0.028 1 0.063);
+            }
+            xbyh2
+            {
+                type            face;
+                axis            y;
+                start           (0.056 0 0.063);
+                end             (0.056 1 0.063);
+            }
+            xbyh3
+            {
+                type            face;
+                axis            y;
+                start           (0.084 0 0.063);
+                end             (0.084 1 0.063);
+            }
+            xbyh4
+            {
+                type            face;
+                axis            y;
+                start           (0.112 0 0.063);
+                end             (0.112 1 0.063);
+            }
+            xbyh5
+            {
+                type            face;
+                axis            y;
+                start           (0.140 0 0.063);
+                end             (0.140 1 0.063);
+            }
+            xbyh6
+            {
+                type            face;
+                axis            y;
+                start           (0.168 0 0.063);
+                end             (0.168 1 0.063);
+            }
+            xbyh7
+            {
+                type            face;
+                axis            y;
+                start           (0.196 0 0.063);
+                end             (0.196 1 0.063);
+            }
+            xbyh8
+            {
+                type            face;
+                axis            y;
+                start           (0.224 0 0.063);
+                end             (0.224 1 0.063);
+            }
+        }
+    }
+}
+
+
+// ************************************************************************* //
