@@ -557,6 +557,97 @@ def plot_nut_ratio(cases):
 
 
 # ----------------------------------------------------------------
+# Plot streamlines: through-flow, primary recirculation and the small
+# secondary (corner) vortex tucked behind the step
+# ----------------------------------------------------------------
+def plot_streamlines(cases):
+    """
+    Streamplot needs velocity on a regular grid, but the CFD data is at
+    scattered (unstructured) cell centres, so first interpolate (Ux, Uy)
+    from the masked triangulation onto a regular grid using matplotlib's own
+    linear tri-interpolator. LinearTriInterpolator returns a masked array
+    (masked wherever a grid point falls outside the triangulation, or inside
+    a masked triangle -- i.e. outside the fluid domain or in the solid step
+    corner) and streamplot honours that mask directly, so streamlines simply
+    stop at the true domain boundary instead of being drawn through solid
+    geometry.
+
+    Two streamplot passes are drawn on top of a background |U| contour:
+      1. A broad, automatically-seeded pass (moderate density) that traces
+         the main through-flow and the large primary recirculation zone.
+      2. A densely, explicitly-seeded pass confined to a small patch right
+         behind the step, hugging the new lower wall. Automatic
+         density-based seeding almost always misses the small counter-
+         rotating secondary (corner) vortex there, because it is far
+         smaller than the primary recirculation zone that dominates the
+         density criterion -- explicit start_points forces streamlines
+         through that patch regardless of local density.
+    """
+    for c in cases:
+        if c['x'] is None or c['Ux'] is None or c['Uy'] is None:
+            continue
+
+        x, y, Ux, Uy = c['x'], c['y'], c['Ux'], c['Uy']
+        speed  = np.sqrt(Ux**2 + Uy**2)
+        triang = masked_triangulation(x, y)
+
+        nx, ny = 600, 220
+        xi = np.linspace(x.min(), x.max(), nx)
+        yi = np.linspace(y.min(), y.max(), ny)
+        XI, YI = np.meshgrid(xi, yi)
+
+        Ui = mtri.LinearTriInterpolator(triang, Ux)(XI, YI)
+        Vi = mtri.LinearTriInterpolator(triang, Uy)(XI, YI)
+
+        fig, ax = plt.subplots(figsize=(14, 5))
+
+        cf = ax.tricontourf(triang, speed, levels=100, cmap='viridis',
+                             alpha=0.85)
+        plt.colorbar(cf, ax=ax, label=r'$|U|$ (m/s)')
+
+        # Pass 1: through-flow + primary recirculation
+        ax.streamplot(xi, yi, Ui, Vi, color='white', density=2.2,
+                      linewidth=0.8, arrowsize=0.8)
+
+        # Pass 2: secondary corner vortex, immediately behind the step --
+        # patch spans x=0.5-15mm, y up to ~8mm above the downstream floor
+        # (LOWER_WALL_Y), well inside the primary recirculation zone (which
+        # extends to x/H~7, i.e. x~0.18m) but sized to the much smaller
+        # corner eddy itself. streamplot requires start_points strictly
+        # inside the (xi, yi) grid range; the nominal wall coordinate
+        # LOWER_WALL_Y sits below the first row of cell centres, so clamp to
+        # one grid cell inside the actual interpolation grid.
+        eps_x, eps_y = xi[1] - xi[0], yi[1] - yi[0]
+        corner_x = np.clip(np.linspace(0.0005, 0.015, 12),
+                            xi[0] + eps_x, xi[-1] - eps_x)
+        corner_y = np.clip(np.linspace(LOWER_WALL_Y + 0.0004, LOWER_WALL_Y + 0.008, 8),
+                            yi[0] + eps_y, yi[-1] - eps_y)
+        corner_seeds = np.array([[xs, ys] for xs in corner_x for ys in corner_y])
+        try:
+            ax.streamplot(xi, yi, Ui, Vi, color='k', density=30,
+                          linewidth=0.6, arrowsize=0.6,
+                          start_points=corner_seeds,
+                          integration_direction='both')
+        except ValueError as e:
+            print(f"  Note: corner-vortex seeding skipped for {c['label']}: {e}")
+
+        ax.set_xlabel('x (m)')
+        ax.set_ylabel('y (m)')
+        ax.set_aspect('equal')
+        ax.set_title(f"Streamlines — {c['label']}")
+        if c['x_reattachment'] is not None:
+            ax.axvline(c['x_reattachment'], color='r', linestyle='--',
+                       linewidth=1.2,
+                       label=f"Reattachment x={c['x_reattachment']:.3f} m")
+            ax.legend(fontsize=10, loc='upper right')
+
+        plt.tight_layout()
+        fname = f"streamlines_pitzDaily_{c['label']}.png"
+        plt.savefig(fname, dpi=150)
+        print(f"Saved: {fname}")
+
+
+# ----------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------
 def main():
@@ -694,6 +785,11 @@ def main():
         plt.tight_layout()
         plt.savefig('omega_field_comparison.png', dpi=150)
         print("Saved: omega_field_comparison.png")
+
+    # ----------------------------------------------------------------
+    # Plot 2c: streamlines (through-flow, primary + secondary vortices)
+    # ----------------------------------------------------------------
+    plot_streamlines(cases)
 
     # ----------------------------------------------------------------
     # Plot 3: NN coefficient fields

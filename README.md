@@ -219,6 +219,22 @@ k and ν_t through the shear layer and downstream of reattachment relative to
 `kOmega`, while suppressing all three NN coefficients somewhat below their
 baseline values almost everywhere.
 
+`streamlines_pitzDaily_{kOmega,kOmegaDavidsonNN}.png` visualize the flow
+topology directly: (Ux,Uy) is interpolated from the masked triangulation
+onto a regular grid with matplotlib's `LinearTriInterpolator` (which returns
+a masked array outside the fluid domain, so streamlines correctly stop at
+the true boundary rather than crossing the solid step corner), plotted over
+a filled |U| contour. A broad, automatically-seeded `streamplot` pass
+captures the through-flow and the large primary recirculation zone; a
+second pass with explicit `start_points` concentrated in a small patch
+right behind the step (x=0.5–15mm, hugging the new lower wall) resolves the
+much smaller counter-rotating secondary corner vortex there, which
+automatic density-based seeding alone misses. Both models show the same
+topology: through-flow, one primary recirculation vortex closing out at the
+reattachment point, and one small secondary corner vortex — no qualitative
+difference in flow structure between `kOmega` and `kOmegaDavidsonNN`, only
+in the k/ν_t/ω magnitudes discussed above.
+
 No digitized Pitz & Daily (1983) velocity/turbulence profile dataset could
 be found publicly for comparison. The ERCOFTAC Classic Collection's
 similarly-named backward-facing-step case (case030) is actually a different
