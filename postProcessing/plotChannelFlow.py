@@ -259,8 +259,14 @@ def main():
             ax1.legend(lines, [l.get_label() for l in lines], loc='best')
 
             plt.tight_layout()
-            plt.savefig(f'NN_coefficients_{label}.png', dpi=150)
-            print(f"Saved: NN_coefficients_{label}.png")
+            # Prefixed with the case name: plotPitzDaily.py names its own NN
+            # coefficient plot NN_coefficients_pitzDaily_{label}.png, and
+            # both cases' label is literally "kOmegaDavidsonNN" -- an
+            # unprefixed name here would collide when figures from multiple
+            # cases are collected together (e.g. uploading to Overleaf).
+            fname = f'NN_coefficients_channelFlow5200_{label}.png'
+            plt.savefig(fname, dpi=150)
+            print(f"Saved: {fname}")
             break  # only first NN case
 
     # ----------------------------------------------------------------

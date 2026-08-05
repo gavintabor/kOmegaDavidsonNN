@@ -79,10 +79,13 @@ Davidson (2026) Fig. 8 closely, with U_bulk staying near both `kOmega` and
 DNS (24.33 vs 24.13/~24.1) and k⁺ peak rising from 3.11 to 5.75 (DNS 5.87).
 See "Known limitations" below for the friction-velocity fix this relies on.
 Post-processing: `python3 plotChannelFlow.py kOmega kOmegaDavidsonNN` from
-the `channelFlow5200/` directory. `NN_coefficients_kOmegaDavidsonNN.png`
+the `channelFlow5200/` directory. `NN_coefficients_channelFlow5200_kOmegaDavidsonNN.png`
 plots σ_k,NN and C_k,NN on a shared left axis and C_ω2,NN on its own right
 axis (both vs y), matching Davidson (2026) Fig. 8(d)'s combined-axes layout
-rather than three separately-scaled panels.
+rather than three separately-scaled panels. (Prefixed with the case name so
+it doesn't collide with `pitzDaily`'s own NN-coefficient plot when figures
+from multiple cases are collected together — both cases' sub-case is
+literally named `kOmegaDavidsonNN`.)
 
 ### flatPlate sub-cases
 
@@ -100,6 +103,36 @@ grading fractions from that reference data; it's a one-time provenance
 script, not part of `Allrun` (its inputs live in `literature/`, which isn't
 distributed with this repo — see "Not in the git repo" below).
 
+**Fixed bug**: the derived grading fractions match Davidson's total
+length/expansion-ratio/cell-count for the near-wall geometric region
+exactly, but OpenFOAM's `simpleGrading` (a single-ratio geometric series)
+doesn't reproduce his actual internal point distribution there — his
+mesh-generation code apparently isn't a pure fixed-ratio series either, so
+our regenerated mesh's cell-centre y-positions drift up to ~7.5% from his in
+that region (converging to an exact match beyond y≈5, i.e. the outer
+uniform 2/3 of the domain). An earlier version of this script interpolated
+Davidson's profile onto *his* y2d.dat-derived positions and wrote the
+result into our mesh by cell index, silently assuming the two meshes'
+cell-index-to-y-position mapping matched. Where the profile is steep near
+the wall, that 7.5% position error translated into inlet values up to 46%
+wrong (in k, at the wall-adjacent cell; 7.6% in U). Fixed by having the
+script read our own mesh's actual generated cell centres (`blockMesh` +
+`writeCellCentres`) and interpolating onto those directly — correct
+regardless of any grading-algorithm mismatch. The effect on results is
+small but real (see updated numbers below).
+
+Rerunning after that fix exposed a second, unrelated latent bug: `kOmega`'s
+Re_θ growth came out fractionally slower (max ≈5496 vs. the previous
+≈5564), landing its last profile-extraction target (Re_θ=5500) right on the
+domain's very last streamwise station — where `column_mask`'s tolerance
+check (`< 0.5*dx`) failed by ~3e-9 due to ordinary floating-point rounding,
+silently dropping that station (`compute_re_theta` returned NaN there,
+poisoning `np.interp` for any nearby target). This is why `kOmega` was
+missing from the last panel of `Uplus_profiles.png`/`kplus_profiles.png`/
+`uv_profiles.png` after the inlet-profile fix — not a new problem, just a
+previously-dormant edge case now landed on. Fixed by adding a small
+relative tolerance to the boundary check.
+
 Re_θ(x) is computed from the actual velocity field's momentum thickness
 (using the *local* edge velocity at each station, not a fixed freestream
 reference — this domain's finite height causes mild core-flow acceleration
@@ -108,7 +141,7 @@ a leading-edge correlation. `plotFlatPlate.py` extracts profiles at fixed
 Re_θ targets (3000, 4000, 4500, 5500 — the third matches Davidson's Fig. 12
 comparison station, the fourth matches the DNS reference data below) rather
 than arbitrary fractions of the plate length, and overlays DNS (Sillero,
-Jiménez & Moser 2014 — the dataset Davidson's Fig. 12 actually cites, closest
+Jiménez & Moser 2013 — the dataset Davidson's Fig. 12 actually cites, closest
 available station locally at Re_θ=5500) on the U⁺, k⁺, and u'v'⁺ plots. The
 skin-friction plot uses Davidson's own correlation and ±6% band
 (`Cf = 2(1/0.384·ln(Re_θ)+4.127)⁻²`) on his exact linear Re_θ=3000–5000 /
@@ -117,7 +150,7 @@ axis) and C_ω2,NN (right axis) against y/δ₉₉ at each station — all five
 now structurally match Davidson's Fig. 12(a)-(e) rather than the differently
 axed/binned plots this port previously produced.
 
-**Known open finding**: around Re_θ≈4600–4900, `kOmegaDavidsonNN` shows a
+**Known open finding**: around Re_θ≈4750–4900, `kOmegaDavidsonNN` shows a
 sharp (near-discontinuous) transition in near-wall k, ν_t, and the NN
 coefficients — a ~3× collapse in k over about 4 cells, driven by the
 σ_k,NN/C_k,NN/C_ω2,NN ↔ k feedback. This is confirmed to be a genuine
@@ -133,6 +166,74 @@ comparing a fully-converged `ewmaM=500` run against an under-converged
 — wrong comparison, now corrected.) This case keeps the default `ewmaM=500`,
 since 3000 gives an identical answer for ~6× the iterations. See "Known
 limitations" below.
+
+### pitzDaily sub-cases
+
+Standard OpenFOAM tutorial backward-facing-step geometry (step height
+H=25.4mm, expansion ratio 2:1, inlet U=10 m/s, ν=1×10⁻⁵ m²/s, Re_H=25,400),
+not one of Davidson's own test cases — used here as a generic separated-flow
+sanity check. `Allrun` runs `blockMesh` then `simpleFoam` for both `kOmega`
+and `kOmegaDavidsonNN`, then `postProcessing/plotPitzDaily.py` computes the
+reattachment length directly from the converged U field and samples U/k
+profiles at fixed x/H stations via `postProcess -dict system/sampleDict`
+(the standalone `sample` utility used by older tutorials no longer exists in
+v2606).
+
+| Sub-case | Reattachment x/H |
+|---|---|
+| `kOmega` | 7.32 |
+| `kOmegaDavidsonNN` | 7.31 |
+| Experiment (Pitz & Daily 1983, Re_H=22,000) | 7.0 |
+
+Good agreement, with a small residual gap plausibly explained by the
+Reynolds number mismatch (this case's Re_H=25,400 vs. the experiment's
+22,000 — the OpenFOAM tutorial geometry was never tuned to match Pitz &
+Daily's flow conditions exactly, just its step/expansion geometry).
+
+Both models are essentially indistinguishable in the mean velocity field —
+the U profiles at x/H = 1, 2, 4, 6, 8, 10 (`U_profiles.png`) overlay almost
+exactly. `kOmegaDavidsonNN` does measurably raise turbulent kinetic energy
+through the shear layer at every station from x/H=2 onward relative to
+`kOmega` (`k_profiles.png`), without changing the mean flow — a real,
+repeatable difference, not noise.
+
+The 2D field plots (`k_field_comparison.png`, `U_field_comparison.png`,
+`omega_field_comparison.png`, `NN_coefficients_pitzDaily_kOmegaDavidsonNN.png`,
+`nut_ratio.png`) use `tricontourf` on a Delaunay triangulation of the
+cell-centre data, masked to drop triangles whose centroid falls in the solid
+step corner (x<0, y<0) — an unmasked triangulation bridges straight across
+that corner and blends inlet-duct values into downstream-duct ones through
+solid geometry. All panels use equal-aspect axes so the domain isn't
+visually stretched. `omega_field_comparison.png` uses a log color scale,
+since ω∝1/y² at the wall spans several orders of magnitude more than the
+bulk flow and saturates a linear one. `k_field_comparison.png` and
+`omega_field_comparison.png` each end with an extra panel giving the
+`kOmegaDavidsonNN`/`kOmega` ratio directly (as does the standalone
+`nut_ratio.png` for turbulent viscosity), and `NN_coefficients_*.png` plots
+σ_k,NN/C_k,NN/C_ω2,NN as a fraction of their baseline (pre-NN-correction)
+value — 2.0/1.0/0.072 respectively, matching the reference lines already
+used in `plotChannelFlow.py`/`plotFlatPlate.py` — on a shared 0.4–1.2
+colorbar (all three stay within a fairly narrow band below baseline
+throughout the domain). Together these show `kOmegaDavidsonNN` raising both
+k and ν_t through the shear layer and downstream of reattachment relative to
+`kOmega`, while suppressing all three NN coefficients somewhat below their
+baseline values almost everywhere.
+
+No digitized Pitz & Daily (1983) velocity/turbulence profile dataset could
+be found publicly for comparison. The ERCOFTAC Classic Collection's
+similarly-named backward-facing-step case (case030) is actually a different
+experiment — Driver & Seegmiller (1985), with a different expansion ratio
+(1.125 vs. this case's 2.0) and a compressible free-stream (M=0.128) — so it
+was not used. The single reattachment-length figure above (7.0, Pitz &
+Daily 1983) is the only literature reference value available for this exact
+geometry.
+
+**Known-bug note**: an earlier version of `plotPitzDaily.py` used
+`STEP_HEIGHT=0.0127` (half the actual 0.0254m mesh step, misread from the
+blockMeshDict), which silently doubled every x/H figure it reported —
+reattachment length came out as ~14.6 instead of ~7.3, and the sampling
+lines' upper end (`0.0508`) actually extended past the real top wall at
+`0.0254`. Both are fixed; the numbers in the table above are correct.
 
 ### periodicHill sub-cases
 
@@ -314,7 +415,7 @@ relaxationFactors
   multiple or separated walls (`pitzDaily`, `periodicHill`) — those still
   use the same domain-wide average, which is a coarser approximation there.
 - **`flatPlate`'s σ_k,NN/C_k,NN/C_ω2,NN ↔ k feedback has a genuine
-  near-discontinuous transition around Re_θ≈4600–4900**, independent of the
+  near-discontinuous transition around Re_θ≈4750–4900**, independent of the
   EWMA averaging window. Near-wall k, ν_t, and the NN coefficients undergo a
   ~3× collapse over a handful of cells; confirmed to persist identically
   (same location, same magnitude) whether `ewmaM` (Davidson Eq. 18) is his

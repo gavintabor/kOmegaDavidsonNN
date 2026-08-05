@@ -1,7 +1,7 @@
 /*--------------------------------*- C++ -*----------------------------------*\
 | =========                 |                                                 |
 | \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\    /   O peration     | Version:  v2406                                 |
+|  \\    /   O peration     | Version:  v2606                                 |
 |   \\  /    A nd           | Website:  www.openfoam.com                      |
 |    \\/     M anipulation  |                                                 |
 \*---------------------------------------------------------------------------*/
@@ -13,6 +13,8 @@ FoamFile
     object      controlDict;
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+libs            ("libkOmegaDavidsonNN.so");
 
 application     simpleFoam;
 
@@ -43,8 +45,6 @@ timeFormat      general;
 timePrecision   6;
 
 runTimeModifiable true;
-
-libs            (libkOmegaDavidsonNN.so);
 
 
 // ************************************************************************* //

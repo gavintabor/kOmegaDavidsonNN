@@ -57,9 +57,9 @@ RHO  = 1.0      # density kg/m^3 (incompressible, normalised)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DNS_KPLUS_FILE = os.path.join(
-    SCRIPT_DIR, 'DNS_data', 'Sillero_Jimenez_Moser_2014_Retheta5500.prof')
+    SCRIPT_DIR, 'DNS_data', 'Sillero_Jimenez_Moser_2013_Retheta5500.prof')
 DNS_RE_THETA = 5500  # this is the DNS station Davidson's Fig. 12 cites ([13]
-                      # = Sillero, Jimenez, Moser 2014); closest one saved
+                      # = Sillero, Jimenez, Moser 2013); closest one saved
                       # locally to his Reθ=4500 profile, not an exact match
 
 # Plot styles per case
@@ -236,7 +236,13 @@ def read_wall_face_centres_x(case_dir, patch_name='bottom'):
 # tolerance far above the jitter but far below the column spacing.
 # ----------------------------------------------------------------
 def column_mask(x_all, x_target, dx):
-    candidates = x_all[np.abs(x_all - x_target) < 0.5 * dx]
+    # The last of the 150 evaluation stations sits exactly 0.5*dx from its
+    # nearest real cell column by construction, but x_target and dx come
+    # from two independently-rounded floating-point calculations -- their
+    # difference can land a few 1e-9 on either side of 0.5*dx. A strict "<"
+    # there intermittently drops that column entirely (silent NaN in
+    # compute_re_theta), so a small relative slack is added.
+    candidates = x_all[np.abs(x_all - x_target) < 0.5 * dx * (1 + 1e-6)]
     if len(candidates) == 0:
         return np.zeros_like(x_all, dtype=bool)
     nearest_x = candidates[np.argmin(np.abs(candidates - x_target))]
@@ -413,7 +419,7 @@ def compute_cf(case_dir):
 
 
 # ----------------------------------------------------------------
-# DNS reference k+ profile (Sillero, Jimenez & Moser 2014 -- the dataset
+# DNS reference k+ profile (Sillero, Jimenez & Moser 2013 -- the dataset
 # Davidson (2026) cites as ref. [13] for Fig. 12), for overlay on the k+
 # plot. Columns: y/d99, y+, urms+, vrms+, wrms+, ... (all in wall units,
 # so k+ = 0.5*(urms+^2 + vrms+^2 + wrms+^2)).

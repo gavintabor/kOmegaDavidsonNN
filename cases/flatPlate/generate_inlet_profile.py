@@ -28,6 +28,8 @@ Usage:
 """
 
 import os
+import re
+import subprocess
 import numpy as np
 
 REPO_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
@@ -55,15 +57,69 @@ def load_davidson_grid():
     return ni, nj, x2d[:, 0], y2d[0, :]
 
 
+def read_vec_component(filepath, component):
+    text = open(filepath).read()
+    idx = text.lower().find('nonuniform')
+    bs = text.find('(', idx)
+    depth = 0
+    i = bs
+    while i < len(text):
+        if text[i] == '(':
+            depth += 1
+        elif text[i] == ')':
+            depth -= 1
+            if depth == 0:
+                be = i
+                break
+        i += 1
+    block = text[bs+1:be]
+    tuples = re.findall(r'\(([^)]+)\)', block)
+    return np.array([float(t.split()[component]) for t in tuples])
+
+
+def load_mesh_ycentres(nj):
+    """
+    Our actual generated mesh's wall-normal cell-centre y-positions (one
+    inlet-face column), read via blockMesh + writeCellCentres in the kOmega
+    sub-case (both sub-cases share an identical blockMeshDict).
+
+    This does NOT reproduce Davidson's y2d.dat cell centres exactly: his
+    y2d.dat growth in the near-wall geometric region isn't a pure single-
+    ratio geometric series (only the total length/ratio/cell-count over that
+    segment match what we derive from it), so OpenFOAM's simpleGrading
+    diverges from his actual point distribution by up to ~7.5% in y near the
+    wall, even though both use the same fractions/ratio/cell-count. Since
+    the profile is steep there, interpolating onto Davidson's positions and
+    writing the result into our mesh by cell INDEX (as an earlier version of
+    this script did) silently mismatches the assigned value to the actual
+    cell location -- up to 46% wrong in k at the wall-adjacent cell. Reading
+    our own mesh's real coordinates and interpolating onto those directly
+    is correct regardless of any grading-algorithm mismatch.
+    """
+    case_dir = os.path.join(CASE_DIR, 'kOmega')
+    subprocess.run(['blockMesh', '-case', case_dir],
+                    check=True, capture_output=True)
+    subprocess.run(['postProcess', '-func', 'writeCellCentres',
+                     '-case', case_dir, '-time', '0'],
+                    check=True, capture_output=True)
+    cc_file = os.path.join(case_dir, '0', 'C')
+    x = read_vec_component(cc_file, 0)
+    y = read_vec_component(cc_file, 1)
+    mask = np.isclose(x, x.min(), atol=1e-6)
+    yc = np.sort(y[mask])
+    if len(yc) != nj:
+        raise RuntimeError(f"Expected {nj} cells in the inlet column, got {len(yc)}")
+    return yc
+
+
 def main():
     ni, nj, xv, yv = load_davidson_grid()
     Lx, Ly = xv[-1], yv[-1]
-    yc = 0.5 * (yv[:-1] + yv[1:])  # 90 cell centres, wall-normal
     print(f"Grid: ni={ni}, nj={nj}, Lx={Lx:.6f}, Ly={Ly:.6f}")
 
     # Multi-grading in y: geometric growth up to where dy stops growing,
     # then uniform. Reproduced here (from the same y2d.dat) so blockMesh
-    # regenerates (very nearly) this same grid.
+    # regenerates (very nearly, see load_mesh_ycentres) this same grid.
     dy = np.diff(yv)
     ratios = dy[1:] / dy[:-1]
     stop = int(np.argmax(ratios < 1.0001)) + 1
@@ -74,6 +130,10 @@ def main():
           f"| segment 2 (uniform): n={n2}, L={L2:.6f}")
     print(f"  -> blockMeshDict fractions: "
           f"({L1/Ly:.6f} {n1/nj:.6f} {r1:.4f}) ({L2/Ly:.6f} {n2/nj:.6f} 1)")
+
+    # Interpolate onto OUR mesh's actual generated cell centres, not
+    # Davidson's y2d.dat-derived ones -- see load_mesh_ycentres docstring.
+    yc = load_mesh_ycentres(nj)
 
     # Inlet profile (Re_theta=2550), given at its own (finer, BL-only) grid.
     prof = np.loadtxt(PROFILE_FILE)

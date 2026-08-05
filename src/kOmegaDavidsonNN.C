@@ -31,6 +31,7 @@ License
 #include "bound.H"
 #include "wallDist.H"
 #include "wallFvPatch.H"
+#include "wallDistAddressing.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -63,31 +64,52 @@ void kOmegaDavidsonNN<BasicTurbulenceModel>::computeNNCoefficients()
     // -------------------------------------------------------------------------
     // Friction velocity for the NN input features (Davidson Eq. 17: x0, x1).
     //
-    // Computed ONCE from the wall-adjacent cells (viscous-sublayer formula,
+    // Computed from the wall-adjacent cells (viscous-sublayer formula,
     // matching Davidson's reference implementation -- see
     // literature/pythons-rans-code-RANS-open/.../modify_case.py:
     //   ustar = (u2d[:,0]*viscos/yp)**0.5
     //   ustar = np.repeat(ustar[:,None], repeats=nj, axis=1)   # held constant
     //           # along the wall-normal direction, not recomputed per cell.
     //
-    // Using a per-cell Cmu^0.25*sqrt(k) estimate instead (the previous
+    // Using a per-cell Cmu^0.25*sqrt(k) estimate instead (an earlier
     // approach here) couples the NN's own inputs to the k field it is
     // actively boosting, which drifts the normalisation away from what the
     // NN was trained on and was found to distort nu_t away from the
     // standard k-omega model outside the immediate near-wall region.
     //
-    // A single domain-wide area-weighted average is used, which is exact
-    // for a homogeneous channel flow (channelFlow5200) and an approximation
-    // for a slowly-growing boundary layer (flatPlate); it does not yet
-    // handle multiple/separated walls (pitzDaily, periodicHill).
+    // Computed once per wall-normal column (constant in y, varying along
+    // the wall) via wallDistAddressing's nearest-wall-face broadcast --
+    // matching Davidson's per-column method exactly, rather than the single
+    // domain-wide average this used to collapse to. That average was exact
+    // for a homogeneous channel flow (channelFlow5200) and a reasonable
+    // approximation for a slowly-growing boundary layer (flatPlate), but
+    // was badly wrong for a wall passing through separation, recirculation,
+    // reattachment and re-acceleration (periodicHill), pushing (x0, x1)
+    // outside the trained range almost everywhere on that wall.
     // -------------------------------------------------------------------------
-    scalar uTauGlobal = 0;
+    volScalarField uTauField
+    (
+        IOobject
+        (
+            "kOmegaDavidsonNN:uTau",
+            this->mesh_.time().timeName(),
+            this->mesh_.thisDb(),
+            IOobjectOption::NO_REGISTER
+        ),
+        this->mesh_,
+        dimensionedScalar
+        (
+            dimVelocity,
+            pow(Cmu_.value(), 0.25) * Foam::sqrt(gAverage(k_.primitiveField()))
+        )
+    );
+
     {
         const tmp<volScalarField> tnu = this->nu();
         const volScalarField& nu = tnu();
 
-        scalar sumUStarA = 0;
-        scalar sumA = 0;
+        volScalarField::Boundary& uTauBf = uTauField.boundaryFieldRef();
+
         forAll(this->mesh_.boundary(), patchi)
         {
             if (isA<wallFvPatch>(this->mesh_.boundary()[patchi]))
@@ -100,27 +122,24 @@ void kOmegaDavidsonNN<BasicTurbulenceModel>::computeNNCoefficients()
                     this->U_.boundaryField()[patchi].patchInternalField()
                 );
                 const scalarField nuWall(nu.boundaryField()[patchi].patchInternalField());
-                const scalarField& magSf = p.magSf();
 
+                scalarField uStarWall(faceCells.size());
                 forAll(faceCells, facei)
                 {
                     const scalar yw = max(yWall[facei], SMALL);
                     const scalar uw = mag(UWall[facei]);
-                    const scalar uStar = Foam::sqrt(nuWall[facei]*uw/yw);
-                    sumUStarA += uStar*magSf[facei];
-                    sumA += magSf[facei];
+                    uStarWall[facei] = Foam::sqrt(nuWall[facei]*uw/yw);
                 }
+                uTauBf[patchi] = uStarWall;
             }
         }
 
-        reduce(sumUStarA, sumOp<scalar>());
-        reduce(sumA, sumOp<scalar>());
-
-        // Fallback (no wall patches found) matches the previous behaviour.
-        uTauGlobal =
-            (sumA > SMALL)
-          ? sumUStarA/sumA
-          : pow(Cmu_.value(), 0.25) * Foam::sqrt(gAverage(k_.primitiveField()));
+        // Broadcast each wall face's u* to every cell whose nearest wall
+        // face is that one -- constant along the wall-normal column,
+        // varying along the wall. Domains with no wall patches simply keep
+        // every cell at the fallback default set above.
+        const auto& wDist = wallDistAddressing::New(this->mesh_);
+        wDist.map(uTauField, mapDistribute::transform());
     }
 
     // -------------------------------------------------------------------------
@@ -313,13 +332,14 @@ void kOmegaDavidsonNN<BasicTurbulenceModel>::computeNNCoefficients()
     const scalarField& yIn    = y.internalField();
     const scalarField& tauIn  = tauTot.internalField();
     const scalarField& nutIn  = this->nut_.internalField();
+    const scalarField& uTauIn = uTauField.internalField();
 
     forAll(this->mesh_.cells(), cellI)
     {
         const scalar voy = nutIn[cellI]
-            / max(yIn[cellI]*uTauGlobal, SMALL);
+            / max(yIn[cellI]*uTauIn[cellI], SMALL);
         const scalar uv  = tauIn[cellI]
-            / max(sqr(uTauGlobal), SMALL);
+            / max(sqr(uTauIn[cellI]), SMALL);
 
         // Clip inputs to training range then normalise to [0, 1]
         const scalar x0 =

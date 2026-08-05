@@ -1,7 +1,7 @@
 /*--------------------------------*- C++ -*----------------------------------*\
 | =========                 |                                                 |
 | \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\    /   O peration     | Version:  v2406                                 |
+|  \\    /   O peration     | Version:  v2606                                 |
 |   \\  /    A nd           | Website:  www.openfoam.com                      |
 |    \\/     M anipulation  |                                                 |
 \*---------------------------------------------------------------------------*/
@@ -14,7 +14,7 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-libs            (turbulenceModelSchemes libkOmegaDavidsonNN.so);
+libs            ("libkOmegaDavidsonNN.so");
 
 application     pimpleFoam;
 
@@ -24,15 +24,9 @@ startTime       1500;
 
 stopAt          endTime;
 
-endTime         1502.52;    // startTime + 10 through-flows (10 x 0.252 s)
+endTime         1510;
 
-//deltaT          1e-4;
-
-deltaT          1e-5;       // reduce by 10x initially
-
-adjustTimeStep  yes;        // let OpenFOAM control it
-maxCo           0.5;        // target CFL
-maxDeltaT       1e-4;       // don't let it grow too large
+deltaT          1e-4;
 
 writeControl    timeStep;
 
@@ -51,6 +45,8 @@ timeFormat      general;
 timePrecision   10;
 
 runTimeModifiable true;
+
+adjustTimeStep  no;
 
 functions
 {
@@ -73,41 +69,6 @@ functions
             {
                 mean        on;
                 prime2Mean  on;
-                base        time;
-            }
-
-            k
-            {
-                mean        on;
-                prime2Mean  on;
-                base        time;
-            }
-
-            R
-            {
-                mean        on;
-                prime2Mean  off;
-                base        time;
-            }
-
-            sigmakNN
-            {
-                mean        on;
-                prime2Mean  off;
-                base        time;
-            }
-
-            CkNN
-            {
-                mean        on;
-                prime2Mean  off;
-                base        time;
-            }
-
-            Comega2NN
-            {
-                mean        on;
-                prime2Mean  off;
                 base        time;
             }
         );
@@ -154,11 +115,6 @@ functions
             U
             columnAverage:columnAverage(UMean)
             columnAverage:columnAverage(UPrime2Mean)
-            k
-            R
-            sigmakNN
-            CkNN
-            Comega2NN
         );
 
         sets
