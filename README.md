@@ -150,22 +150,25 @@ axis) and C_ω2,NN (right axis) against y/δ₉₉ at each station — all five
 now structurally match Davidson's Fig. 12(a)-(e) rather than the differently
 axed/binned plots this port previously produced.
 
-**Known open finding**: around Re_θ≈4750–4900, `kOmegaDavidsonNN` shows a
-sharp (near-discontinuous) transition in near-wall k, ν_t, and the NN
-coefficients — a ~3× collapse in k over about 4 cells, driven by the
-σ_k,NN/C_k,NN/C_ω2,NN ↔ k feedback. This is confirmed to be a genuine
-converged steady-state property of the coupled model, not a relaxation
-artifact: it appears identically (same location, same magnitude) whether
-the EWMA averaging window (Davidson Eq. 18) is his flat-plate default
-(`ewmaM=500`) or his channel-flow value (`ewmaM=3000`), run to full
-convergence in each case — `ewmaM` controls how fast the solution *reaches*
-its steady state, not what that steady state *is*. (An earlier version of
-this note claimed `ewmaM=3000` smoothed the transition away; that was
-comparing a fully-converged `ewmaM=500` run against an under-converged
-`ewmaM=3000` one that only looked smoother because it hadn't caught up yet
-— wrong comparison, now corrected.) This case keeps the default `ewmaM=500`,
-since 3000 gives an identical answer for ~6× the iterations. See "Known
-limitations" below.
+**Resolved finding (was "Known open finding")**: an earlier version of this
+section reported a sharp (near-discontinuous) transition in near-wall k,
+ν_t, and the NN coefficients around Re_θ≈4750–4900 — a ~3× collapse in k
+over about 4 cells — and, after ruling out the EWMA averaging window
+(Davidson Eq. 18) as the cause, concluded it was "a genuine converged
+steady-state property of the coupled model". That conclusion was wrong: the
+real cause was `uTauGlobal`, the single domain-wide-averaged friction
+velocity then used to normalise the NN's (x0,x1) inputs (see "Known
+limitations" below) — a fair approximation near the mesh's mean Reynolds
+number but progressively worse for stations far from it, worst at the
+highest-Re_θ station, exactly where the transition appeared. Rerunning
+after switching to per-column u_τ (matching Davidson's own method) removes
+it completely: `Cf_vs_Retheta.png` is now smooth and monotonic across the
+whole Re_θ=3000–5000 range, and the previously-anomalous last panel of
+`kplus_profiles.png`/`Uplus_profiles.png`/`uv_profiles.png` now follows the
+same trend as the other three stations. Confirmed by diffing freshly
+regenerated plots against the previously-committed ones. This case keeps
+the default `ewmaM=500` (Davidson's stated default), since 3000 reaches the
+identical answer for ~6× the iterations.
 
 ### pitzDaily sub-cases
 
@@ -496,22 +499,18 @@ relaxationFactors
   sub-cases" section above. `pitzDaily` (also a multi/separated-wall case)
   inherits the same per-column change but has not yet been specifically
   re-validated against it.
-- **`flatPlate`'s σ_k,NN/C_k,NN/C_ω2,NN ↔ k feedback has a genuine
-  near-discontinuous transition around Re_θ≈4750–4900**, independent of the
-  EWMA averaging window. Near-wall k, ν_t, and the NN coefficients undergo a
-  ~3× collapse over a handful of cells; confirmed to persist identically
-  (same location, same magnitude) whether `ewmaM` (Davidson Eq. 18) is his
-  flat-plate default (500) or his channel-flow value (3000), each run to
-  full convergence — ruling out a relaxation-timescale artifact and pointing
-  to a genuine steady-state property of the coupled model in this regime.
-  Davidson's own note that this class of instability ("slow oscillations...
-  related to the strong elliptic character") doesn't occur in flat-plate
-  flow is about *temporal* oscillation at a point; this is a distinct
-  *spatial* transition that only appears once the boundary layer develops
-  far enough downstream — plausibly further than his own 92δ_in domain
-  reaches, which may be why it isn't reported in the paper. This case keeps
-  `ewmaM=500` (Davidson's stated default), since 3000 reaches the identical
-  answer for ~6× the iterations; see the "flatPlate sub-cases" section above.
+- **`flatPlate`'s previously-reported Re_θ≈4750–4900 near-discontinuous
+  transition was a u_τ normalisation artifact, not a genuine model
+  property — now fixed.** An earlier investigation ruled out the EWMA
+  averaging window as the cause and concluded the ~3× near-wall k collapse
+  there was "a genuine converged steady-state property of the coupled
+  model". That conclusion didn't hold up: the actual cause was the
+  domain-wide-averaged `uTauGlobal` described above, which is least
+  accurate at the highest-Re_θ (farthest-from-mean) station — exactly where
+  the transition appeared. Switching to per-column u_τ removes it entirely;
+  see the "flatPlate sub-cases" section above for the confirmed before/after
+  comparison. This case keeps `ewmaM=500` (Davidson's stated default), since
+  3000 reaches the identical answer for ~6× the iterations.
 
 ## Citation
 
