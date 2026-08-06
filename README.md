@@ -233,8 +233,16 @@ v2606).
 | Sub-case | Reattachment x/H |
 |---|---|
 | `kOmega` | 7.32 |
-| `kOmegaDavidsonNN` | 7.31 |
+| `kOmegaDavidsonNN` | 7.28 |
 | Experiment (Pitz & Daily 1983, Re_H=22,000) | 7.0 |
+
+Rerun with the per-column u_τ fix (see "Known limitations" below) — the
+NN's own friction-velocity normalisation now varies along the wall instead
+of using one domain-wide average. Reattachment length barely moved
+(7.31→7.28); `kOmega` is unaffected (it doesn't use the NN's u_τ
+normalisation at all). This case's separate wall-BC/mesh-resolution issue
+found for `flatPlate` (see that section) has *not* been applied here yet —
+pitzDaily still uses `kqRWallFunction` for k.
 
 Good agreement, with a small residual gap plausibly explained by the
 Reynolds number mismatch (this case's Re_H=25,400 vs. the experiment's
@@ -545,8 +553,9 @@ relaxationFactors
   almost everywhere. That turned out to be expected model behaviour on
   this flow rather than a normalisation artifact — see the "periodicHill
   sub-cases" section above. `pitzDaily` (also a multi/separated-wall case)
-  inherits the same per-column change but has not yet been specifically
-  re-validated against it.
+  inherits the same per-column change and has been re-validated against it
+  — reattachment length barely moved (7.31→7.28), see "pitzDaily sub-cases"
+  above.
 - **`flatPlate`'s previously-reported Re_θ≈4750–4900 near-discontinuous
   transition was a u_τ normalisation artifact, not a genuine model
   property — now fixed.** An earlier investigation ruled out the EWMA
