@@ -468,14 +468,19 @@ profile's u_τ-normalised trajectory happens to pass through — see below.
 
 #### σ_k,NN vs. pySR over the full input domain
 
-`postProcessing/plotSigmaK_NN_vs_pySR_domain.py` evaluates both the NN
-(weights parsed directly from `src/kOmegaDavidsonNN.C`, so this can't itself
-introduce a transcription error while checking for one) and Eq. 22 over the
-*entire* trained (x0, x1) rectangle — independent of any CFD run, so it has
-no u_τ, EWMA, or trajectory-dependent confounds:
+`cases/NNCheck/plotSigmaK_NN_vs_pySR_domain.py` (also in `postProcessing/`)
+evaluates both the NN (weights parsed directly from
+`src/kOmegaDavidsonNN.C`, so this can't itself introduce a transcription
+error while checking for one) and Eq. 22 over the *entire* trained (x0, x1)
+rectangle — independent of any CFD run, so it has no u_τ, EWMA, or
+trajectory-dependent confounds. `cases/NNCheck/` is the canonical place to
+run this and `evaluate_NN_from_DNS.py` (which reproduces Davidson Fig. 5
+directly from DNS, also CFD-independent) — both are pure NN-weight checks,
+kept together separately from the CFD case directories:
 
 ```bash
-python3 ../../postProcessing/plotSigmaK_NN_vs_pySR_domain.py [case_dir]
+cd cases/NNCheck
+python3 plotSigmaK_NN_vs_pySR_domain.py [case_dir]
 ```
 
 `case_dir` is optional; if given, that case's actual (x0, x1) trajectory is
