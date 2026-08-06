@@ -30,20 +30,24 @@ vertices
 
 blocks
 (
-    // 150 cells in x (uniform), 90 in y (graded), 1 in z (2D).
-    // Reproduces Davidson (2026) Sec. 5.2's flat-plate grid: 150x90 cells,
-    // domain 92*delta_in x 20*delta_in, y-grid geometric near the wall
-    // (dy0=9.83e-4, r=1.1/cell) up to y=6.354 then uniform to y=18.022 --
-    // see cases/flatPlate/generate_inlet_profile.py for how these grading
-    // fractions were derived from Davidson's own y2d.dat.
+    // 150 cells in x (uniform), 158 in y (graded), 1 in z (2D).
+    // EXPERIMENT (not yet confirmed/committed): near-wall segment refined
+    // from Davidson's original 68 cells to 136 (same first-cell height
+    // dy0=1.057e-3 and same segment length 6.354, slower growth ratio to
+    // compensate), outer uniform segment unchanged at 22 cells -- testing
+    // whether under-resolving the sharp near-wall CkNN/sigmakNN transition
+    // is contributing to flatPlate's ~9% residual Cf over-prediction (see
+    // [[project_flatplate_cf_investigation]] memory). If this doesn't
+    // explain the gap, revert to the original 150x90 grid documented
+    // in generate_inlet_profile.py (derived from Davidson's own y2d.dat).
     hex (0 1 2 3 4 5 6 7)
-    (150 90 1)
+    (150 222 1)
     simpleGrading
     (
         1
         (
-            (0.352588 0.755556 539.4078)
-            (0.647412 0.244444 1)
+            (0.352588 0.900901 1030.3701)
+            (0.647412 0.099099 1)
         )
         1
     )

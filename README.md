@@ -91,7 +91,7 @@ literally named `kOmegaDavidsonNN`.)
 
 Flat-plate zero-pressure-gradient turbulent boundary layer, matching Davidson
 (2026) Sec. 5.2's actual setup rather than a simpler leading-edge-developing
-approximation: a 150×90 grid over a 75.19×18.02 m domain (uniform streamwise,
+approximation: a 150×222 grid over a 75.19×18.02 m domain (uniform streamwise,
 geometric-then-uniform wall-normal grading, matching his stated 92δ_in×20δ_in
 size), ν = 3.57×10⁻⁵ m²/s, and — most importantly — an **inlet condition that
 is already a fully turbulent boundary layer at Re_θ=2550** (U, k, ω profiles
@@ -169,6 +169,54 @@ same trend as the other three stations. Confirmed by diffing freshly
 regenerated plots against the previously-committed ones. This case keeps
 the default `ewmaM=500` (Davidson's stated default), since 3000 reaches the
 identical answer for ~6× the iterations.
+
+**Fixed: ~12% Cf over-prediction, root-caused to two compounding issues.**
+After the u_τ fix above, `kOmegaDavidsonNN`'s Cf still ran ~9-12% above
+`kOmega`/the correlation throughout, unlike Davidson's own Fig. 12(a) (where
+his NN model tracks kOmega/correlation closely — confirmed by loading his
+own saved `cf_vs_re_mom.png` from the exact reference run this port's NN
+weights come from). The near-wall U⁺-vs-y⁺ profiles looking almost
+identical between models is *not* evidence against a real difference: both
+axes are non-dimensionalised by each model's own u_τ, so the viscous
+sublayer always plots as U⁺≈y⁺ regardless of the actual dimensional wall
+shear. Pulling raw (non-normalised) fields showed `kOmegaDavidsonNN`'s
+near-wall k running two to three orders of magnitude above `kOmega`'s at
+the same physical point.
+
+Every production/destruction/diffusion term in `src/kOmegaDavidsonNN.C` was
+checked algebraically against Davidson's own solver
+(`literature/.../exec-pyCALC-RANS.py`) and matches exactly. The NN's own
+output (`CkNN`≈0.01-0.05 in the viscous sublayer) also matches his saved
+run closely — the trained network itself isn't at fault. Two real,
+independent issues were found instead:
+
+1. **Wall BC mismatch**: this model's k destruction term is weakened
+   20-70× by `CkNN` near the wall (vs. standard `kOmega`, which is immune
+   because ω's near-wall blow-up keeps `Cmu·ω·k` large regardless). Davidson's
+   solver compensates with an explicit Dirichlet `k=0` wall condition
+   (`k_bc_south=0`, `k_bc_south_type='d'`); this port used stock
+   `kqRWallFunction` (a zero-gradient/high-Re treatment that never pulls k
+   to zero) for k on **every** case. Switched the bottom patch to
+   `fixedValue; value uniform 0;` in `flatPlate/{kOmega,kOmegaDavidsonNN}/0/k`
+   (and in `generate_inlet_profile.py`'s template, so regeneration doesn't
+   revert it). This closed part of the gap (~11.7%→~9.0%) but not all of it.
+2. **Under-resolved first cell**: adding more near-wall cells while keeping
+   the first-cell height fixed did nothing (ruled out generic
+   under-resolution of the sharp near-wall NN-coefficient transition).
+   Shrinking the *first cell itself* 5× (150×90 → 150×222, first cell
+   y⁺≈0.1 instead of ≈0.6, same total near-wall segment length) closed
+   almost all of the remaining gap (~9.0%→~0.6%) — and shifted `kOmega`'s
+   own Cf too, revealing that the original mesh (which faithfully matched
+   Davidson's documented y⁺≈0.8 design) wasn't actually fully grid-converged
+   in OpenFOAM's discretization for *either* model. This mesh now
+   deliberately exceeds Davidson's own resolution rather than literally
+   reproducing his 150×90 grid.
+
+`Cf_vs_Retheta.png` now shows `kOmega` and `kOmegaDavidsonNN` nearly
+overlapping and tracking close to the correlation, matching the shape of
+Davidson's Fig. 12(a). Only one refinement step was tested (not confirmed
+grid-independent with further refinement) — see
+`project_flatplate_cf_investigation` session notes if revisiting this.
 
 ### pitzDaily sub-cases
 

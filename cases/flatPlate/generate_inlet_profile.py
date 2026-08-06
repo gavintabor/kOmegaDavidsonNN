@@ -77,7 +77,7 @@ def read_vec_component(filepath, component):
     return np.array([float(t.split()[component]) for t in tuples])
 
 
-def load_mesh_ycentres(nj):
+def load_mesh_ycentres():
     """
     Our actual generated mesh's wall-normal cell-centre y-positions (one
     inlet-face column), read via blockMesh + writeCellCentres in the kOmega
@@ -95,6 +95,13 @@ def load_mesh_ycentres(nj):
     cell location -- up to 46% wrong in k at the wall-adjacent cell. Reading
     our own mesh's real coordinates and interpolating onto those directly
     is correct regardless of any grading-algorithm mismatch.
+
+    Deliberately does NOT assert the cell count against Davidson's own nj
+    (from y2d.dat) -- blockMeshDict's own (150 x NJ x 1) cell count is the
+    sole source of truth for the mesh we actually solve on. This lets
+    blockMeshDict's y-resolution be refined independently of Davidson's
+    reference grid (see the near-wall mesh-refinement experiment in
+    [[project_flatplate_cf_investigation]]) without this script erroring out.
     """
     case_dir = os.path.join(CASE_DIR, 'kOmega')
     subprocess.run(['blockMesh', '-case', case_dir],
@@ -107,8 +114,6 @@ def load_mesh_ycentres(nj):
     y = read_vec_component(cc_file, 1)
     mask = np.isclose(x, x.min(), atol=1e-6)
     yc = np.sort(y[mask])
-    if len(yc) != nj:
-        raise RuntimeError(f"Expected {nj} cells in the inlet column, got {len(yc)}")
     return yc
 
 
@@ -133,7 +138,14 @@ def main():
 
     # Interpolate onto OUR mesh's actual generated cell centres, not
     # Davidson's y2d.dat-derived ones -- see load_mesh_ycentres docstring.
-    yc = load_mesh_ycentres(nj)
+    # nj here is only used above for the grading-fraction printout; the
+    # mesh's real cell count (set independently in blockMeshDict) is
+    # whatever load_mesh_ycentres actually finds.
+    yc = load_mesh_ycentres()
+    if len(yc) != nj:
+        print(f"Note: mesh has {len(yc)} wall-normal cells, "
+              f"not Davidson's {nj} -- using the mesh's own count "
+              f"(see load_mesh_ycentres docstring).")
 
     # Inlet profile (Re_theta=2550), given at its own (finer, BL-only) grid.
     prof = np.loadtxt(PROFILE_FILE)
@@ -248,8 +260,20 @@ boundaryField
 
     bottom
     {{
-        type            kqRWallFunction;
-        value           uniform {kinf:.6e};
+        // Dirichlet k=0, matching Davidson's own solver exactly
+        // (k_bc_south=0, k_bc_south_type='d' in exec-pyCALC-RANS.py) --
+        // NOT kqRWallFunction (a zero-gradient/high-Re treatment that
+        // never pulls k to zero). On this low-Re, y+<1 wall-resolving
+        // mesh, kqRWallFunction only "worked" for standard kOmega because
+        // omega's near-wall blow-up keeps the destruction term
+        // (Cmu*omega*k) strong regardless of wall BC; kOmegaDavidsonNN
+        // weakens that same term via CkNN~0.01-0.05 near the wall, so
+        // nothing was left pulling k to its correct near-zero wall value.
+        // See project_flatplate_cf_investigation memory for the full
+        // root-cause chain (~12% Cf over-prediction, this BC fix closes
+        // part but not all of the gap).
+        type            fixedValue;
+        value           uniform 0;
     }}
 
     top
