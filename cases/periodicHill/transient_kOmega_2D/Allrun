@@ -1,0 +1,23 @@
+#!/bin/sh
+cd "${0%/*}" || exit                                # Run from this directory
+. ${WM_PROJECT_DIR:?}/bin/tools/RunFunctions        # Tutorial run functions
+#------------------------------------------------------------------------------
+
+canCompile || exit 0    # Dynamic code
+
+# Matches Davidson's actual method (Sec. 5.3) for *both* turbulence models
+# he compares there -- "unsteady simulations are carried out marching to
+# steady-state conditions", no steady RANS initialisation stage at all.
+# Standard kOmega steady (steadyState_kOmega_2D) blows up on this flow just
+# as kOmegaDavidsonNN's steady diagnostic does (see steadyState_kOmega_2D/
+# Allrun) -- consistent with Davidson never running a steady RANS stage for
+# this case either. Only the mesh is reused from steadyState_kOmega_2D, via
+# symlink -- not its (divergent) fields.
+echo "Linking mesh from steadyState_kOmega_2D"
+ln -sf ../../steadyState_kOmega_2D/constant/polyMesh constant/polyMesh
+
+restore0Dir
+
+runApplication $(getApplication)
+
+#------------------------------------------------------------------------------

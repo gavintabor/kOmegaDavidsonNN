@@ -14,9 +14,7 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-libs            ("libkOmegaDavidsonNN.so");
-
-application     pimpleFoam;
+application     simpleFoam;
 
 startFrom       startTime;
 
@@ -24,110 +22,48 @@ startTime       0;
 
 stopAt          endTime;
 
-// Matches Davidson's ~44 through-flows (L/Ub = 0.252 m / 1 m/s = 0.252 s
-// per through-flow; 44 * 0.252 = 11.088 s), run from a fresh t=0 start.
-endTime         11.1;
+endTime         1500;
 
-deltaT          1e-6;   // small initial step, grown by adjustTimeStep
+deltaT          1;
 
 writeControl    timeStep;
 
-writeInterval   500;
+writeInterval   100;
 
-purgeWrite      5;
+purgeWrite      3;
 
 writeFormat     binary;
 
-writePrecision  8;
+writePrecision  6;
 
 writeCompression off;
 
 timeFormat      general;
 
-timePrecision   10;
+timePrecision   6;
 
 runTimeModifiable true;
 
-adjustTimeStep  yes;
-maxCo           0.5;
-maxDeltaT       1e-4;    // stock tutorial's fixed step, used as a ceiling
-
 functions
 {
-    // Registers the modelled Reynolds-stress tensor R (Boussinesq closure,
-    // including this model's NN-corrected sigma_k/C_k/C_omega2) every step
-    // so fieldAverage1 below can time-average it. This URANS run's *total*
-    // turbulent shear stress is the modelled contribution (RMean) plus
-    // whatever large-scale unsteadiness the run resolves (UPrime2Mean) --
-    // looking at UPrime2Mean alone would silently drop the modelled part,
-    // which dominates in the attached/near-wall regions.
-    //
-    // NB the field this registers in the database/on disk is named
-    // "turbulenceProperties:R", not plain "R" -- fieldAverage1 below must
-    // reference it by that qualified name, or it silently finds nothing
-    // (confirmed the hard way: the first run of this case logged "Field R
-    // not found in database for averaging" and produced no RMean at all;
-    // fixed post-hoc for that run via 5 saved instantaneous R snapshots
-    // averaged externally -- see postprocess_hill.py's module docstring --
-    // fixed properly here so a rerun computes a true running average).
+    // Registers the modelled Reynolds-stress tensor R (Boussinesq:
+    // -2*nut*symm(gradU) + 2/3*I*k) so it can be sampled below -- the
+    // correct total turbulent shear stress for a converged *steady* RANS
+    // solve (no resolved unsteadiness to average, unlike the transient
+    // kOmegaDavidsonNN/tutorial cases).
     turbulenceFields1
     {
         type            turbulenceFields;
         libs            (fieldFunctionObjects);
         fields          (R);
-        executeControl  timeStep;
-        executeInterval 1;
+        executeControl  onEnd;
         writeControl    none;
     }
 
-    fieldAverage1
-    {
-        type            fieldAverage;
-        libs            (fieldFunctionObjects);
-        writeControl    writeTime;
-        // Davidson averages only the last 100 of 40,000 steps (~0.25% of
-        // the run); with adaptive timestepping here that's too short a
-        // window for smooth statistics, so average the last ~20% instead
-        // (still a late-run tail, same intent).
-        timeStart       9.0;
-        fields
-        (
-            U
-            {
-                mean        on;
-                prime2Mean  on;
-                base        time;
-            }
-
-            p
-            {
-                mean        on;
-                prime2Mean  on;
-                base        time;
-            }
-
-            turbulenceProperties:R
-            {
-                mean        on;
-                prime2Mean  off;
-                base        time;
-            }
-
-            k
-            {
-                mean        on;
-                prime2Mean  off;
-                base        time;
-            }
-        );
-    }
-
-    // No columnAverage here -- that existed to average over the 3D
-    // baseline's periodic spanwise direction. This case is a 1-cell-thick
-    // (empty front/back) 2D approximation, so there is no spanwise
-    // direction to average over; fieldAverage1's UMean/UPrime2Mean are
-    // used directly in `sample` below instead.
-
+    // Matches the station list, z-plane and output convention already
+    // used by transient_kOmegaDavidsonNN_2D and the stock tutorial's
+    // transient/system/controlDict, so postprocess_hill.py can read all
+    // cases uniformly.
     sample
     {
         type            sets;
@@ -140,10 +76,8 @@ functions
         fields
         (
             U
-            UMean
-            UPrime2Mean
-            turbulenceProperties:RMean
-            kMean
+            k
+            R
         );
 
         sets

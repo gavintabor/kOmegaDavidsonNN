@@ -2,8 +2,25 @@
 cd "${0%/*}" || exit                                # Run from this directory
 #------------------------------------------------------------------------------
 
-(cd steadyState && ./Allrun)
+echo "=== Periodic hill, Re=10565 ==="
 
+echo "--- OpenFOAM tutorial baseline (SA steady init -> SA-IDDES transient) ---"
+(cd steadyState && ./Allrun)
 (cd transient && ./Allrun)
+
+echo "--- Standard kOmega (steady diagnostic -- expected to diverge, see"
+echo "    steadyState_kOmega_2D/Allrun -- then fresh-start transient) ---"
+(cd steadyState_kOmega_2D && ./Allrun)
+(cd transient_kOmega_2D && ./Allrun)
+
+echo "--- kOmegaDavidsonNN (steady diagnostic -- expected to diverge, see"
+echo "    steadyState_kOmegaDavidsonNN_2D/Allrun -- then fresh-start transient) ---"
+(cd steadyState_kOmegaDavidsonNN_2D && ./Allrun)
+(cd transient_kOmegaDavidsonNN_2D && ./Allrun)
+
+echo "--- Post-processing ---"
+python3 postprocess_hill.py
+
+echo "=== Periodic hill complete ==="
 
 #------------------------------------------------------------------------------

@@ -27,6 +27,13 @@ __pycache__/
 # at the start of every Allrun, so 0.orig/ must not be dropped here).
 log.*
 processor*/
+# `transient`'s own processor0..N are symlinks to ../steadyState/processorN
+# (its Allrun links rather than decomposes), and git's trailing-slash
+# processor*/ pattern above doesn't match symlinks-to-directories, only
+# real directories -- same class of gap already handled for the
+# transient_*_2D cases' polyMesh symlink below, just not caught here until
+# `transient` was actually run for the first time (2026-08-11).
+processor*
 postProcessing/
 !/postProcessing/
 cases/*/*/[0-9]*/

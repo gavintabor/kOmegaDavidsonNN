@@ -325,9 +325,17 @@ provenance rather than a from-scratch reproduction of Davidson's own
 |---|---|---|---|---|
 | `steadyState` | simpleFoam | Spalart-Allmaras | 3D (200×160×80, periodic front/back) | Tutorial baseline initialisation |
 | `transient` | pimpleFoam | SA-IDDES | 3D, inherited from `steadyState` | Tutorial LES reference |
+| `steadyState_kOmega_2D` | simpleFoam | kOmega (standard) | 1-cell-thick (200×160×1, `empty` front/back) | Diagnostic only — see below |
+| `transient_kOmega_2D` | pimpleFoam | kOmega (standard) | Same 1-cell-thick mesh, own fresh start | Standard-model transient result |
 | `steadyState_kOmegaDavidsonNN` | simpleFoam | kOmegaDavidsonNN | 3D, same as baseline | Diagnostic only — see below |
 | `steadyState_kOmegaDavidsonNN_2D` | simpleFoam | kOmegaDavidsonNN | 1-cell-thick (200×160×1, `empty` front/back) | Diagnostic only — see below |
 | `transient_kOmegaDavidsonNN_2D` | pimpleFoam | kOmegaDavidsonNN | Same 1-cell-thick mesh, own fresh start | NN-corrected transient result |
+
+Davidson (2026) Sec. 5.3 compares three things on this flow: standard k-ω,
+k-ω-PINN-NN, and DNS (Froehlich, Mellen, Rodi et al. 2005, *J. Fluid Mech.*
+526:19–66 — his ref [15]). This port adds a fourth: the pristine OpenFOAM
+tutorial's own SA-IDDES result (`transient`), so all four appear together
+in `postprocess_hill.py`'s output — see "Four-way comparison" below.
 
 **Why 1-cell-thick, not Davidson's 2-cell mesh.** Davidson's own hill mesh
 is 2 cells thick in z with slip walls, not truly 2D — necessary because his
@@ -380,6 +388,142 @@ to the training range), and shows that substituting those constant values
 everywhere reproduces the full model's predictions almost exactly. So the
 saturation itself is expected model behaviour on this flow, not a bug —
 useful to keep visible rather than discard.
+
+**Standard `kOmega` gets the identical treatment, for the same reason.**
+`steadyState_kOmega_2D` (plain Wilcox k-ω on the same 1-cell-thick mesh)
+also diverges to a floating-point exception under steady SIMPLEC —
+instability visible from ~iteration 288, FPE by ~508 — even though nothing
+about the standard model's near-wall behaviour resembles
+`kOmegaDavidsonNN`'s coefficient blow-up. This isn't a port bug either:
+re-reading Davidson (2026) Sec. 5.3 confirms he never runs a steady RANS
+stage for *either* turbulence model on the hill flow — "unsteady
+simulations are carried out marching to steady-state conditions" is his
+stated method for both the standard-k-ω and k-ω-PINN-NN comparisons in his
+Figs. 14–16. `transient_kOmega_2D` therefore follows the exact same
+fresh-start recipe as `transient_kOmegaDavidsonNN_2D` (mesh symlinked from
+`steadyState_kOmega_2D`, `pimpleFoam` from t=0, same ~44 through-flows,
+same averaging window).
+
+**Modelled + resolved Reynolds stress and TKE.** Both transient legs are
+URANS (unsteady RANS): on top of each model's own closure, the run can
+resolve real large-scale unsteadiness (the flapping motion near the crest
+that Davidson's DNS shows and steady RANS can't represent). Comparing
+`UPrime2Mean`/`kMean`-from-fluctuations alone against DNS would silently
+drop the modelled closure's own contribution, which dominates in the
+attached/near-wall regions; comparing only the modelled coefficients would
+drop any resolved unsteadiness. Both `transient_kOmega_2D` and
+`transient_kOmegaDavidsonNN_2D` therefore also register the modelled
+Reynolds-stress tensor (`turbulenceFields` function object → `R`) and
+average it (`RMean`) and `k` (`kMean`) alongside `U`/`UMean`/`UPrime2Mean`;
+`postprocess_hill.py` sums modelled + resolved for the shear-stress and TKE
+plots. The tutorial's `transient` (SA-IDDES) leg is left as a pristine,
+unmodified copy (see "Not in the git repo" below) with no such modelled
+field registered, so its two panels are resolved-only — the conventional
+way LES/hybrid results are reported, and a small effect away from the wall,
+but a real asymmetry against the two RANS legs' modelled+resolved total
+worth keeping in mind when reading those plots.
+
+**Four-way comparison.** `postprocess_hill.py` (run from `periodicHill/`)
+reproduces Davidson's Figs. 14–16 (velocity, shear stress, TKE at his six
+x/H = 0.05, 1, 3, 4, 5, 7 stations) with a fourth series added: `kOmega`
+(orange), `kOmegaDavidsonNN` (blue), DNS (Froehlich et al. 2005, black
+dash-dot), and the tutorial's SA-IDDES `transient` (green dotted). All four
+share the same sample-station convention (`xbyh<x/H>`, z=0.063 m mid-span,
+raw format) already wired into each case's `system/controlDict`, wider than
+Davidson's six stations (0.05, 0.5, 1, 2, ..., 8, matching the stock
+tutorial's own validation stations) — the plot script picks Davidson's six
+by default. Figures are written to `periodicHill/figures/`.
+
+`hill_velocity.png`/`hill_shear_stress.png` (kOmega/kOmegaDavidsonNN/DNS,
+first run 2026-08-11) reproduce Davidson's own finding well. The x/H=0.05
+station briefly plotted the wrong DNS file (`DNS_x05h.dat`, which is
+actually x/H=0.5 — the naming strips the decimal point, so digit count
+distinguishes "005"=0.05 from "05"=0.5; fixed in `_DNS_FILENAMES`), visible
+as a spurious double-hump shear-stress shape that didn't match Davidson's
+smooth single-trough Fig. 15(a) — velocity was unaffected since the two
+stations' U profiles happen to be similar this close to the crest.
+`kOmegaDavidsonNN` tracks DNS noticeably better than standard `kOmega`,
+especially the shear-stress magnitude downstream of the crest.
+
+`hill_tke.png`'s DNS side also needed a fix: `_DNS_COLS["k"]` originally
+pointed at column 8, which has the right profile *shape* (single hump,
+vanishing at wall and freestream) but is a near-exact constant multiple
+(3.5797, <0.02% scatter across every station checked) of the real thing —
+too precise to be noise, too clean to be a genuinely different quantity.
+`k/Ub² = 0.5·(columns 4,5,6)` is the one that actually lands in Davidson's
+Fig. 16 axis range; see `_DNS_COLS`'s comment in `postprocess_hill.py` for
+the full derivation. Fixed, `hill_tke.png` now reproduces his stated
+finding well: `kOmegaDavidsonNN` over-predicts DNS k (matching his "the
+predicted k with the k-ω-PINN-NN model is in general too large"), while
+standard `kOmega` under-predicts and is actually closer to DNS for x/H≥5,
+also matching his text.
+
+`field_contours.png` gives the same comparison (`kOmega` vs
+`kOmegaDavidsonNN` only — the SA-IDDES tutorial leg has neither k nor
+omega) as filled contours over the whole domain: one combined figure, 3
+rows (U, k, ω) x 2 columns (kOmega left, kOmegaDavidsonNN right), each row
+sharing one color scale/colorbar across both columns so left-right
+differences read as physical, not a scale artefact. Uses the same
+masked-triangulation technique as
+`pitzDaily`'s `postProcessing/plotPitzDaily.py` (raw OpenFOAM field
+parsing + `writeCellCentres` + `tricontourf`, no VTK/PyFoam dependency).
+U/k use the true running `UMean`/`kMean` averages `fieldAverage` already
+writes as full fields; omega has no such average (`fieldAverage` was only
+told to average U, p, R, k) so is instead a 5-snapshot time average over
+the same saved instantaneous fields the post-hoc `RMean` fix used. Building
+these exposed a real, pre-existing bug: `hill_y_lower()` (used for wall
+masking) decays ~monotonically over the full domain instead of the real
+hill shape (crest → flat channel floor by x/H≈2 → crest again by x/H≈9) —
+never caught before because every other caller only evaluates it at
+Davidson's 6-10 discrete stations, and none of the profile plots actually
+depend on its output (OpenFOAM's own `sample` sets clip to real mesh faces
+regardless). Not fixed — the contour plots' masking derives the wall
+height empirically from the real mesh instead, sidestepping it entirely;
+see `hill_y_lower()`'s own comment.
+
+**Second wall-rendering bug, caught by inspection and now fixed**: the
+first version of this plot showed the near-wall boundary as sharp diagonal
+streaks instead of the mesh's actual smooth curve. Not a masking-tolerance
+issue — plain Delaunay triangulation of scattered cell-centre points
+doesn't know the mesh's real topology, and along the curved, boundary-
+layer-graded wall it connected far-apart points into long thin "fan"
+triangles radiating from the crest corner. Confirmed by plotting the raw
+triangulation directly (`ax.triplot`): real mesh-conforming triangles have
+edges of a few mm; the fan artifacts ran the width of the domain. Fixed by
+additionally masking any triangle whose longest edge exceeds 5x the median
+(verified against a zoomed render, not just picked analytically — 10x
+still left one visible residual sliver at the corner). `pitzDaily`'s
+`plotPitzDaily.py` uses the same bare-Delaunay `mtri.Triangulation`
+technique and doesn't have this safeguard; it hasn't visibly shown the
+same artifact so wasn't touched, but the sharp step corner there is a
+different geometry (no long curved near-wall boundary for stray triangles
+to bridge across) — worth the same check if its contour plots are ever
+revisited.
+
+`coefficient_ratio_contours.png` is a Davidson (2026) Fig. 18 equivalent:
+σ_k,NN, C_k,NN, C_ω2,NN and the total-viscosity ratio ν_tot,NN/ν_tot,kOmega
+as 2x2 field contours. Unlike his absolute-value grayscale panels, the
+three coefficients are shown as a ratio to the standard-kOmega baseline
+value each one replaces (2.0, 1.0, 0.075), on the same 0–2 RdBu_r scale
+centred at 1.0 as `pitzDaily`'s `nut_ratio.png` — matching the convention
+already used for these coefficients' line-profile comparisons elsewhere
+(`plotChannelFlow.py`/`plotFlatPlate.py`/`plotPitzDaily.py`) rather than
+Davidson's own absolute values. All three coefficients sit close to their
+saturated values from his text (1.42/0.42/0.043 → ratios ≈0.71/0.42/0.57)
+across almost the whole domain, and the viscosity-ratio panel reproduces
+the same low-near-wall/high-outer-region pattern and ~2.0 cap he reports
+for Fig. 18(d).
+
+**Known deviation, not yet fixed: hill-wall vs upper-wall BC.** Davidson
+states a wall function (Reichardt's law) is used only at the *upper* flat
+wall for the hill flow, implying a different (low-Re, non-wall-function)
+treatment at the hill wall itself. Every case here (`kOmega` and
+`kOmegaDavidsonNN` alike) currently applies one combined BC to
+`"(top|hills)"` — same treatment on both walls. This predates today's
+kOmega/tutorial additions and applies equally to both turbulence models;
+noted here rather than fixed, to keep this round of work scoped to adding
+the comparison rather than re-deriving the wall treatment (which would
+mean rerunning every periodicHill sub-case).
 
 ## Usage in your own cases
 
@@ -573,6 +717,10 @@ relaxationFactors
   see the "flatPlate sub-cases" section above for the confirmed before/after
   comparison. This case keeps `ewmaM=500` (Davidson's stated default), since
   3000 reaches the identical answer for ~6× the iterations.
+- `periodicHill` applies one combined BC to `"(top|hills)"` for every
+  sub-case, whereas Davidson (2026) Sec. 5.3 uses a wall function only at
+  the upper flat wall and a different (low-Re) treatment at the hill wall
+  itself. Known, not yet fixed — see "periodicHill sub-cases" above.
 
 ## Citation
 

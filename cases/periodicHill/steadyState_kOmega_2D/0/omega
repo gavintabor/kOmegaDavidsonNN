@@ -9,34 +9,31 @@ FoamFile
 {
     version     2.0;
     format      ascii;
-    class       dictionary;
-    object      cuttingPlane;
+    class       volScalarField;
+    object      omega;
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-functions
+dimensions      [0 0 -1 0 0 0 0];
+
+internalField   uniform 65;
+
+boundaryField
 {
-    cuttingPlane
+    "(inlet|outlet)"
     {
-        type            surfaces;
-        libs            (sampling);
-        writeControl    writeTime;
+        type            cyclic;
+    }
 
-        surfaceFormat   vtk;
-        fields          ( p U );
+    "(front|back)"
+    {
+        type            empty;
+    }
 
-        interpolationScheme cellPoint;
-
-        surfaces
-        {
-            yNormal
-            {
-                type        cuttingPlane;
-                point       (0 0 0.063);
-                normal      (0 0 1);
-                interpolate true;
-            }
-        }
+    "(top|hills)"
+    {
+        type            omegaWallFunction;
+        value           uniform 1000;
     }
 }
 
