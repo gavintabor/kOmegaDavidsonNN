@@ -116,6 +116,13 @@ functions
                 prime2Mean  off;
                 base        time;
             }
+
+            omega
+            {
+                mean        on;
+                prime2Mean  off;
+                base        time;
+            }
         );
     }
 
@@ -141,6 +148,7 @@ functions
             UPrime2Mean
             turbulenceProperties:RMean
             kMean
+            omegaMean
         );
 
         sets

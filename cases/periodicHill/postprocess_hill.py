@@ -961,8 +961,8 @@ def _hill_masked_triangulation(x, y, H):
 
 
 def _load_field_case(case_dir, H):
-    """Cell centres + UMean/kMean (true running averages, already written
-    as full fields by fieldAverage) + 5-snapshot averages of omega, nut,
+    """Cell centres + UMean/kMean/omegaMean (true running averages, already
+    written as full fields by fieldAverage) + 5-snapshot averages of nut
     and (kOmegaDavidsonNN only) sigmakNN/CkNN/Comega2NN, for one case.
     Returns None if the case hasn't been run."""
     case_dir = Path(case_dir)
@@ -977,13 +977,22 @@ def _load_field_case(case_dir, H):
     td = case_dir / time_name
     Ux = _read_of_vector_field(td / "UMean", 0)
     k = _read_of_field(td / "kMean")
-    omega = _time_average_field(case_dir, "omega", _FIELD_SNAPSHOT_TIMES)
+    # omegaMean only exists on a rerun since the omega/turbulenceFields fix
+    # (see transient_kOmega_2D/system/controlDict's fieldAverage1 comment);
+    # the first run (2026-08-11) predates it, so fall back to the same
+    # 5-snapshot post-hoc average nut/the NN coefficients still use below.
+    if (td / "omegaMean").exists():
+        omega = _read_of_field(td / "omegaMean")
+        omega_source = "true running average"
+    else:
+        omega = _time_average_field(case_dir, "omega", _FIELD_SNAPSHOT_TIMES)
+        omega_source = "5-snapshot approximation"
     nut = _time_average_field(case_dir, "nut", _FIELD_SNAPSHOT_TIMES)
     sigmakNN = _time_average_field(case_dir, "sigmakNN", _FIELD_SNAPSHOT_TIMES)
     CkNN = _time_average_field(case_dir, "CkNN", _FIELD_SNAPSHOT_TIMES)
     Comega2NN = _time_average_field(case_dir, "Comega2NN", _FIELD_SNAPSHOT_TIMES)
-    return dict(x=x, y=y, Ux=Ux, k=k, omega=omega, nut=nut,
-               sigmakNN=sigmakNN, CkNN=CkNN, Comega2NN=Comega2NN,
+    return dict(x=x, y=y, Ux=Ux, k=k, omega=omega, omega_source=omega_source,
+               nut=nut, sigmakNN=sigmakNN, CkNN=CkNN, Comega2NN=Comega2NN,
                time=time_name)
 
 
@@ -1058,9 +1067,14 @@ def plot_field_contours(cases_data, H, out_dir):
             fig.colorbar(cf, ax=row_axes, label=cbar_label, ticks=ticks,
                         shrink=0.9)
 
+    omega_sources = {d["omega_source"] for d in field_cases.values()
+                     if d.get("omega") is not None}
+    omega_note = (omega_sources.pop() if len(omega_sources) == 1
+                 else "mixed sources, see per-case data" if omega_sources
+                 else "n/a")
     fig.suptitle("Periodic hill — U, k, ω field comparison\n"
-                "(U, k: true UMean/kMean running averages; "
-                "ω: 5-snapshot time average)", fontsize=13)
+                f"(U, k: true UMean/kMean running averages; ω: {omega_note})",
+                fontsize=13)
     _save(fig, out_dir, "field_contours.png")
 
 

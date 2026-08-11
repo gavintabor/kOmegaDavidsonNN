@@ -31,13 +31,12 @@ wmake libso
 
 The library is installed to `$FOAM_USER_LIBBIN`.
 
-Note for porting to other OpenFOAM versions: the two custom omega wall BCs
-(`kOmegaDavidsonNNWallFunction`, `kOmegaDavidsonNNOmegaBC`) deliberately omit
-the bare "construct as copy" constructor and no-arg `clone()`, matching the
-constructor pattern OpenFOAM v2606 uses for its own wall functions (e.g.
-`kqRWallFunctionFvPatchField`) — their base classes delete that constructor.
-Older OpenFOAM versions may still provide it; newer ones may require the same
-omission here.
+Note for porting to other OpenFOAM versions: the custom omega wall BC
+(`kOmegaDavidsonNNOmegaBC`) deliberately omits the bare "construct as copy"
+constructor and no-arg `clone()`, matching the constructor pattern OpenFOAM
+v2606 uses for its own wall functions (e.g. `kqRWallFunctionFvPatchField`)
+— its base class deletes that constructor. Older OpenFOAM versions may
+still provide it; newer ones may require the same omission here.
 
 ## Quick start
 
@@ -519,11 +518,18 @@ states a wall function (Reichardt's law) is used only at the *upper* flat
 wall for the hill flow, implying a different (low-Re, non-wall-function)
 treatment at the hill wall itself. Every case here (`kOmega` and
 `kOmegaDavidsonNN` alike) currently applies one combined BC to
-`"(top|hills)"` — same treatment on both walls. This predates today's
-kOmega/tutorial additions and applies equally to both turbulence models;
-noted here rather than fixed, to keep this round of work scoped to adding
-the comparison rather than re-deriving the wall treatment (which would
-mean rerunning every periodicHill sub-case).
+`"(top|hills)"` — same treatment on both walls: `noSlip` (U), `zeroGradient`
+(k), `nutkWallFunction` (nut), and `omegaWallFunction`/`kOmegaDavidsonNNOmegaBC`
+(omega, stock OpenFOAM wall functions either way — `kOmegaDavidsonNNOmegaBC`
+implements Eq. 7's near-wall ω relation, a different part of Davidson's
+method, not Reichardt's law). This predates today's kOmega/tutorial
+additions and applies equally to both turbulence models; noted here rather
+than fixed, to keep this round of work scoped to adding the comparison
+rather than re-deriving the wall treatment (which would mean rerunning
+every periodicHill sub-case). Decided (2026-08-11) not to pursue further:
+plausibly accounts for the standard-kOmega results being slightly off from
+Davidson's own, but not worth chasing down given how well both models'
+results already match his qualitative findings.
 
 ## Usage in your own cases
 
@@ -640,20 +646,38 @@ in this port.
 
 ## Omega wall boundary conditions
 
-Two omega wall BCs are provided in the library:
+One omega wall BC is provided in the library:
 
-- **`kOmegaDavidsonNNWallFunction`** — derives from `omegaWallFunctionFvPatchScalarField`.
-  Applies Davidson (2026) Eq. 7 (`omega_w = 6ν/(Comega2NN·y²)`) when `Comega2NN` is in
-  the registry, otherwise falls back to the standard wall function. Use this for
-  low-Re meshes with a wall function approach.
 - **`kOmegaDavidsonNNOmegaBC`** — derives from `fixedValueFvPatchScalarField`.
   A pure Dirichlet BC that sets `omega_w = 6ν/(Comega2NN·y²)` directly on each wall
-  face (falls back to `6ν/(beta1·y²)` with beta1=0.072 if the model is not active).
-  Requires a sufficiently fine near-wall mesh (y⁺ ~ 1).
+  face (falls back to `6ν/(beta1·y²)` with beta1=0.072 if the model is not active) —
+  Davidson (2026) Eq. 7. Requires a sufficiently fine near-wall mesh (y⁺ ~ 1). Used
+  by channelFlow5200 and all three periodicHill kOmegaDavidsonNN sub-cases, all of
+  which target that resolution.
 
-Both BCs clamp `Comega2NN` to a minimum of 0.01 before use in the denominator,
-preventing division by near-zero values on the first iteration before the NN fields
-have fully initialised. Physical values of Cω2,NN are always above 0.02.
+Clamps `Comega2NN` to a minimum of 0.01 before use in the denominator, preventing
+division by near-zero values on the first iteration before the NN fields have fully
+initialised. Physical values of Cω2,NN are always above 0.02.
+
+**History, for anyone wondering why there's only one (2026-08-11):** an earlier
+`kOmegaDavidsonNNWallFunction` also existed, deriving from
+`omegaWallFunctionFvPatchScalarField` and injecting the same Eq. 7 value into the
+near-wall *cell* (the standard wall-function mechanism) rather than setting a
+Dirichlet face value. It was actually the *first* attempt at this BC (preceded only
+by a discarded direct cell-overwrite in `correct()`, which collapsed Re_τ to ~2140).
+It compiled and ran stably, with reasonable U⁺, but measurably degraded k⁺ in the
+outer region compared to the standard wall function — so it was left compiled into
+the library but never wired into any case. `kOmegaDavidsonNNOmegaBC` came after,
+once re-reading the paper made clear Eq. 7 is a Dirichlet condition, not a wall
+function, and became the one actually used everywhere. Removed 2026-08-11 once this
+history was confirmed (it wasn't reconstructable from git log alone — both BCs
+landed in the same squashed initial commit) — a superseded, worse-performing
+experiment, not a reserved-for-later option; flatPlate and pitzDaily's
+kOmegaDavidsonNN cases use plain stock `omegaWallFunction` for omega instead of
+either, unrelated to this — a separate, still-open gap (flatPlate's mesh is low-Re
+like the cases that *do* use `kOmegaDavidsonNNOmegaBC`, so arguably should too;
+pitzDaily's coarser mesh is a more ambiguous fit for Eq. 7 either way, since it's
+explicitly a viscous-sublayer-only relation).
 
 ## Solver recommendations
 
