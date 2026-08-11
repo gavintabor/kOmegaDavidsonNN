@@ -217,6 +217,23 @@ Davidson's Fig. 12(a). Only one refinement step was tested (not confirmed
 grid-independent with further refinement) — see
 `project_flatplate_cf_investigation` session notes if revisiting this.
 
+**Wall omega BC fixed (2026-08-11).** `kOmegaDavidsonNN/0/omega`'s `bottom`
+patch was plain `omegaWallFunction` — missing the NN's `C_ω2,NN` at the
+wall entirely, unlike channelFlow5200 and periodicHill's kOmegaDavidsonNN
+cases, which already used `kOmegaDavidsonNNOmegaBC` (Davidson Eq. 7) at the
+same y⁺~0.1 mesh resolution. Switched to `kOmegaDavidsonNNOmegaBC`, and
+fixed `generate_inlet_profile.py`'s omega template to match — it now
+writes a case-specific `bottom` BC (`omegaWallFunction` for `kOmega`,
+`kOmegaDavidsonNNOmegaBC` for `kOmegaDavidsonNN`) rather than one shared
+template, so regenerating the inlet profile doesn't silently revert this.
+Rerunning both cases from scratch reproduces the same good agreement
+already documented above (Cf nearly overlapping and tracking the
+correlation, U⁺/k⁺ matching DNS the same way) — this was the first actual
+run of these cases in this cloned environment, so there's no prior result
+in-repo to isolate this specific change's marginal effect against; the
+check that matters (results still match the documented, validated
+behaviour) passes.
+
 ### pitzDaily sub-cases
 
 Standard OpenFOAM tutorial backward-facing-step geometry (step height
@@ -652,8 +669,10 @@ One omega wall BC is provided in the library:
   A pure Dirichlet BC that sets `omega_w = 6ν/(Comega2NN·y²)` directly on each wall
   face (falls back to `6ν/(beta1·y²)` with beta1=0.072 if the model is not active) —
   Davidson (2026) Eq. 7. Requires a sufficiently fine near-wall mesh (y⁺ ~ 1). Used
-  by channelFlow5200 and all three periodicHill kOmegaDavidsonNN sub-cases, all of
-  which target that resolution.
+  by channelFlow5200, all three periodicHill kOmegaDavidsonNN sub-cases, and (since
+  2026-08-11) flatPlate — all of which target that resolution. pitzDaily's
+  kOmegaDavidsonNN case is the one exception, still on plain stock
+  `omegaWallFunction`; see the history note below for why.
 
 Clamps `Comega2NN` to a minimum of 0.01 before use in the denominator, preventing
 division by near-zero values on the first iteration before the NN fields have fully
@@ -672,12 +691,15 @@ once re-reading the paper made clear Eq. 7 is a Dirichlet condition, not a wall
 function, and became the one actually used everywhere. Removed 2026-08-11 once this
 history was confirmed (it wasn't reconstructable from git log alone — both BCs
 landed in the same squashed initial commit) — a superseded, worse-performing
-experiment, not a reserved-for-later option; flatPlate and pitzDaily's
-kOmegaDavidsonNN cases use plain stock `omegaWallFunction` for omega instead of
-either, unrelated to this — a separate, still-open gap (flatPlate's mesh is low-Re
-like the cases that *do* use `kOmegaDavidsonNNOmegaBC`, so arguably should too;
-pitzDaily's coarser mesh is a more ambiguous fit for Eq. 7 either way, since it's
-explicitly a viscous-sublayer-only relation).
+experiment, not a reserved-for-later option. Separately (unrelated to
+`kOmegaDavidsonNNWallFunction`), flatPlate and pitzDaily's kOmegaDavidsonNN cases
+were both found using plain stock `omegaWallFunction` for omega instead of
+`kOmegaDavidsonNNOmegaBC` — missing the NN's `C_ω2,NN` at the wall entirely.
+flatPlate was fixed 2026-08-11 (see flatPlate sub-cases above) since its mesh is
+low-Re like the cases that already used the right BC. pitzDaily's coarser mesh is
+left as-is — a more ambiguous fit for Eq. 7, since it's explicitly a
+viscous-sublayer-only relation, so plain `omegaWallFunction` may genuinely be the
+more defensible choice there.
 
 ## Solver recommendations
 

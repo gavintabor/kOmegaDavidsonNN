@@ -295,7 +295,8 @@ boundaryField
 // ************************************************************************* //
 """
 
-    omega_field = f"""{foam_header('volScalarField', 'omega')}
+    def _omega_field(bottom_bc):
+        return f"""{foam_header('volScalarField', 'omega')}
 dimensions      [0 0 -1 0 0 0 0];
 
 internalField   uniform 100;
@@ -315,8 +316,7 @@ boundaryField
 
     bottom
     {{
-        type            omegaWallFunction;
-        value           uniform 100;
+{bottom_bc}
     }}
 
     top
@@ -338,8 +338,26 @@ boundaryField
 // ************************************************************************* //
 """
 
+    # kOmega keeps plain omegaWallFunction (matching channelFlow5200/
+    # periodicHill's kOmega legs); kOmegaDavidsonNN uses Davidson (2026)
+    # Eq. 7's Dirichlet BC, matching this mesh's low-Re resolution
+    # (y+~0.1) and the same model's channelFlow5200/periodicHill cases --
+    # was plain omegaWallFunction for both here too until this was caught
+    # missing 2026-08-11 (see cases/flatPlate/kOmegaDavidsonNN/0/omega).
+    omega_field_kOmega = _omega_field(
+        "        type            omegaWallFunction;\n"
+        "        value           uniform 100;")
+    omega_field_kOmegaDavidsonNN = _omega_field(
+        "        type            kOmegaDavidsonNNOmegaBC;\n"
+        "        value           uniform 100;")
+
+    omega_fields = {
+        'kOmega': omega_field_kOmega,
+        'kOmegaDavidsonNN': omega_field_kOmegaDavidsonNN,
+    }
     for case in ('kOmega', 'kOmegaDavidsonNN'):
-        for name, content in (('U', U_field), ('k', k_field), ('omega', omega_field)):
+        for name, content in (('U', U_field), ('k', k_field),
+                              ('omega', omega_fields[case])):
             path = os.path.join(CASE_DIR, case, '0', name)
             with open(path, 'w') as f:
                 f.write(content)

@@ -259,7 +259,12 @@ boundaryField
 
     bottom
     {
-        type            omegaWallFunction;
+        // Davidson (2026) Eq. 7 Dirichlet BC, matching the mesh's low-Re
+        // resolution (y+~0.1) -- was plain omegaWallFunction, missing the
+        // NN's C_omega2,NN entirely at the wall despite channelFlow5200
+        // and periodicHill's kOmegaDavidsonNN cases already using this BC
+        // at the same resolution. Fixed 2026-08-11.
+        type            kOmegaDavidsonNNOmegaBC;
         value           uniform 100;
     }
 
