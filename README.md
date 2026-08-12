@@ -15,7 +15,11 @@ input features and produce improved predictions of turbulent kinetic
 energy k without degrading the velocity profile.
 
 All neural network weights are hardcoded as C++ static arrays — no
-runtime ML library dependency is required.
+runtime ML library dependency is required. The full weights, biases, and
+clipping ranges for all three networks are documented as tables in
+[`NETWORK_COEFFICIENTS.md`](NETWORK_COEFFICIENTS.md), extracted directly
+from the source (not hand-transcribed) by
+`postProcessing/generate_network_coefficients_doc.py`.
 
 ## Prerequisites
 
