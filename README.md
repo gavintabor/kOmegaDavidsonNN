@@ -721,11 +721,17 @@ more defensible choice there.
 
 ## Solver recommendations
 
-For body-force-driven periodic flows (channel, periodic hill) use **SIMPLEC**
-(`consistent yes` in the `SIMPLE` block) with pressure relaxation set to 1.0.
-Standard SIMPLE with `p` under-relaxation of 0.3–0.5 significantly underpredicts
-bulk velocity in these configurations, even after 15 000 iterations.
-Recommended relaxation factors:
+Every steady-state (`simpleFoam`) case in this repo uses **SIMPLEC**
+(`consistent yes` in the `SIMPLE` block) — channelFlow5200, flatPlate,
+pitzDaily, and periodicHill's `steadyState` (which is the *pristine*,
+unmodified OpenFOAM tutorial copy — SIMPLEC there is the stock tutorial's
+own default, not something changed by this port).
+
+The original, narrower motivation for SIMPLEC was body-force-driven
+periodic flows specifically (channel, periodic hill): standard SIMPLE with
+`p` under-relaxation of 0.3–0.5 significantly underpredicts bulk velocity
+in that configuration, even after 15 000 iterations, and needs `p`
+relaxation set to **1.0** as well as `consistent yes` to fix it:
 
 ```
 relaxationFactors
@@ -734,6 +740,15 @@ relaxationFactors
     equations { U  0.9;  k  0.5;  omega  0.5; }
 }
 ```
+
+(matching channelFlow5200's actual `fvSolution`). SIMPLEC itself turned out
+to be used everywhere regardless (including cases with no body-force/
+periodicity, where the underprediction issue this was originally fixing
+doesn't arise) — but the `p` relaxation override is specific to
+channelFlow5200; flatPlate and pitzDaily use a flat 0.9 relaxation on all
+equations with no `p` override (SIMPLEC's own default), and periodicHill's
+tutorial-derived `steadyState` doesn't set `p` relaxation explicitly
+either.
 
 ## Known limitations
 
