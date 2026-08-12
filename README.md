@@ -341,11 +341,8 @@ provenance rather than a from-scratch reproduction of Davidson's own
 |---|---|---|---|---|
 | `steadyState` | simpleFoam | Spalart-Allmaras | 3D (200×160×80, periodic front/back) | Tutorial baseline initialisation |
 | `transient` | pimpleFoam | SA-IDDES | 3D, inherited from `steadyState` | Tutorial LES reference |
-| `steadyState_kOmega_2D` | simpleFoam | kOmega (standard) | 1-cell-thick (200×160×1, `empty` front/back) | Diagnostic only — see below |
-| `transient_kOmega_2D` | pimpleFoam | kOmega (standard) | Same 1-cell-thick mesh, own fresh start | Standard-model transient result |
-| `steadyState_kOmegaDavidsonNN` | simpleFoam | kOmegaDavidsonNN | 3D, same as baseline | Diagnostic only — see below |
-| `steadyState_kOmegaDavidsonNN_2D` | simpleFoam | kOmegaDavidsonNN | 1-cell-thick (200×160×1, `empty` front/back) | Diagnostic only — see below |
-| `transient_kOmegaDavidsonNN_2D` | pimpleFoam | kOmegaDavidsonNN | Same 1-cell-thick mesh, own fresh start | NN-corrected transient result |
+| `transient_kOmega_2D` | pimpleFoam | kOmega (standard) | 1-cell-thick (200×160×1, `empty` front/back), self-contained | Standard-model transient result |
+| `transient_kOmegaDavidsonNN_2D` | pimpleFoam | kOmegaDavidsonNN | Same 1-cell-thick mesh, self-contained | NN-corrected transient result |
 
 Davidson (2026) Sec. 5.3 compares three things on this flow: standard k-ω,
 k-ω-PINN-NN, and DNS (Froehlich, Mellen, Rodi et al. 2005, *J. Fluid Mech.*
@@ -358,67 +355,55 @@ is 2 cells thick in z with slip walls, not truly 2D — necessary because his
 solver (`pyCALC-LES`) has no equivalent of OpenFOAM's `empty` patch type, so
 a genuinely 1-cell direction gives it a degenerate self-referencing stencil.
 OpenFOAM's `empty` patch removes the direction from the discretisation
-entirely, so `steadyState_kOmegaDavidsonNN_2D`/`transient_kOmegaDavidsonNN_2D`
-use a real 1-cell mesh (`front`/`back` type `empty`) — a closer match to
-his 2D *intent* than his own workaround, and ~80× fewer cells. Only the
-`kOmegaDavidsonNN` sub-cases move to this mesh; the baseline keeps the full
-3D periodic mesh, since SA-IDDES is scale-resolving and genuinely needs it.
+entirely, so `transient_kOmega_2D`/`transient_kOmegaDavidsonNN_2D` use a
+real 1-cell mesh (`front`/`back` type `empty`) — a closer match to his 2D
+*intent* than his own workaround, and ~80× fewer cells. Only these two
+sub-cases use this mesh; the tutorial baseline keeps the full 3D periodic
+mesh, since SA-IDDES is scale-resolving and genuinely needs it.
 
-**Why `transient_kOmegaDavidsonNN_2D` starts fresh at t=0, not restarted
-from a steady solution.** The obvious approach — steady SIMPLE init, then
-restart transient from it, mirroring the baseline's own SA→SA-IDDES
-workflow — was tried first and doesn't work for this model: the steady
-`kOmegaDavidsonNN` solve converges (by its own residual metric) to a state
-with a severe, spatially broad `k`/`ω` blow-up in a band along the wall
-just behind the hill crest (`k` up to ~10⁶, confirmed by direct field
-instrumentation to be spatially real, not a single-cell artifact). This
-is a pseudo-time SIMPLE artifact, not a numerics bug in this port:
-restarting `transient_kOmegaDavidsonNN_2D` from it diverges to a floating
-point exception *instantly* under real time-accurate stepping, regardless
-of how small a timestep is used (tried down to 1e-72 s). Davidson's own
-paper explains why no steady fixed point should be expected there at all
-— Section 5.3 never runs a steady RANS stage for periodic hill (his own
+**Why the transient legs start fresh at t=0, not restarted from a steady
+solution.** The obvious approach — steady SIMPLE init, then restart
+transient from it, mirroring the baseline's own SA→SA-IDDES workflow — was
+tried first for `kOmegaDavidsonNN` and doesn't work: a steady solve
+converges (by its own residual metric) to a state with a severe, spatially
+broad `k`/`ω` blow-up in a band along the wall just behind the hill crest
+(`k` up to ~10⁶, confirmed by direct field instrumentation to be spatially
+real, not a single-cell artifact) — a pseudo-time SIMPLE artifact, not a
+numerics bug in this port: restarting a transient run from it diverges to
+a floating point exception *instantly* under real time-accurate stepping,
+regardless of how small a timestep is used (tried down to 1e-72 s).
+Standard `kOmega` was checked too, on the same mesh: also diverges to a
+floating-point exception under steady SIMPLEC (instability visible from
+~iteration 288, FPE by ~508), even though nothing about its near-wall
+behaviour resembles `kOmegaDavidsonNN`'s coefficient blow-up. Neither is a
+port bug: re-reading Davidson (2026) Sec. 5.3 confirms he never runs a
+steady RANS stage for *either* turbulence model on the hill flow —
+"unsteady simulations are carried out marching to steady-state conditions"
+is his stated method for both comparisons in his Figs. 14–16 (his own
 `pyCALC-RANS` "did not succeed" adjusting the driving pressure-gradient
-coefficient for this flow); he goes straight to unsteady `pyCALC-LES` from
-a fresh start. The same section separately notes DNS shows a large-scale
-flapping motion near the crest that steady RANS cannot represent — plausibly
-*why* no steady solution exists there: the physical attractor at that
-location isn't a fixed point.
+coefficient for this flow either). The same section separately notes DNS
+shows a large-scale flapping motion near the crest that steady RANS cannot
+represent — plausibly *why* no steady solution exists there: the physical
+attractor at that location isn't a fixed point. (The steady diagnostic
+cases that demonstrated this divergence directly —
+`steadyState_kOmega_2D`, `steadyState_kOmegaDavidsonNN`,
+`steadyState_kOmegaDavidsonNN_2D` — were deliberately deleted 2026-08-12
+once this finding was written up here and the transient legs were made
+self-contained: a decision, not a `.gitignore` exclusion, made on the
+basis that this paragraph's account is sufficient documentation on its
+own without also keeping the corroborating case files. This paragraph is
+now the only record of it.)
 
-`transient_kOmegaDavidsonNN_2D` therefore starts from the same small-uniform
-initial condition as the steady case (only the mesh is shared, via an
-`Allrun`-time symlink, not the steady case's fields) and runs `pimpleFoam`
-directly for ~44 through-flows (t=0–11.1 s, matching Davidson's own
-40,000-step run), with adaptive timestepping (`maxCo 0.5`). This converges
-cleanly to a fully bounded result (`k` max ≈0.1, vs ≈10⁶ restarting from
-steady), with `U`/`p` time-averaged over the last ~20% of the run and
-profiles sampled at Davidson's Fig. 14 x/H stations for DNS comparison.
-
-`steadyState_kOmegaDavidsonNN`/`steadyState_kOmegaDavidsonNN_2D` are kept
-as diagnostic cases even though they're no longer part of the transient
-run's initialisation path: their saturated NN coefficients (pinned at
-their clip bounds along most of the wall) independently corroborate a
-finding in Davidson's own paper — Section 5.3 reports σ_k,NN/C_k,NN/C_ω2,NN
-constant across 88% of his domain for the same reason (NN inputs clipped
-to the training range), and shows that substituting those constant values
-everywhere reproduces the full model's predictions almost exactly. So the
-saturation itself is expected model behaviour on this flow, not a bug —
-useful to keep visible rather than discard.
-
-**Standard `kOmega` gets the identical treatment, for the same reason.**
-`steadyState_kOmega_2D` (plain Wilcox k-ω on the same 1-cell-thick mesh)
-also diverges to a floating-point exception under steady SIMPLEC —
-instability visible from ~iteration 288, FPE by ~508 — even though nothing
-about the standard model's near-wall behaviour resembles
-`kOmegaDavidsonNN`'s coefficient blow-up. This isn't a port bug either:
-re-reading Davidson (2026) Sec. 5.3 confirms he never runs a steady RANS
-stage for *either* turbulence model on the hill flow — "unsteady
-simulations are carried out marching to steady-state conditions" is his
-stated method for both the standard-k-ω and k-ω-PINN-NN comparisons in his
-Figs. 14–16. `transient_kOmega_2D` therefore follows the exact same
-fresh-start recipe as `transient_kOmegaDavidsonNN_2D` (mesh symlinked from
-`steadyState_kOmega_2D`, `pimpleFoam` from t=0, same ~44 through-flows,
-same averaging window).
+Both `transient_kOmega_2D` and `transient_kOmegaDavidsonNN_2D` therefore
+start from the same small-uniform initial condition, generate their own
+mesh (`blockMesh`+`topoSet`, self-contained since 2026-08-12 — earlier
+versions symlinked a steady-diagnostic sibling's mesh instead), and run
+`pimpleFoam` directly for ~44 through-flows (t=0–11.1 s, matching
+Davidson's own 40,000-step run), with adaptive timestepping (`maxCo 0.5`).
+This converges cleanly to a fully bounded result (`k` max ≈0.1, vs ≈10⁶
+restarting from steady), with `U`/`p`/`k`/ω/the modelled Reynolds stress
+time-averaged over the last ~20% of the run (see below) and profiles
+sampled at Davidson's Fig. 14 x/H stations for DNS comparison.
 
 **Modelled + resolved Reynolds stress and TKE.** Both transient legs are
 URANS (unsteady RANS): on top of each model's own closure, the run can
@@ -427,17 +412,40 @@ that Davidson's DNS shows and steady RANS can't represent). Comparing
 `UPrime2Mean`/`kMean`-from-fluctuations alone against DNS would silently
 drop the modelled closure's own contribution, which dominates in the
 attached/near-wall regions; comparing only the modelled coefficients would
-drop any resolved unsteadiness. Both `transient_kOmega_2D` and
-`transient_kOmegaDavidsonNN_2D` therefore also register the modelled
-Reynolds-stress tensor (`turbulenceFields` function object → `R`) and
-average it (`RMean`) and `k` (`kMean`) alongside `U`/`UMean`/`UPrime2Mean`;
-`postprocess_hill.py` sums modelled + resolved for the shear-stress and TKE
-plots. The tutorial's `transient` (SA-IDDES) leg is left as a pristine,
-unmodified copy (see "Not in the git repo" below) with no such modelled
-field registered, so its two panels are resolved-only — the conventional
-way LES/hybrid results are reported, and a small effect away from the wall,
-but a real asymmetry against the two RANS legs' modelled+resolved total
-worth keeping in mind when reading those plots.
+drop any resolved unsteadiness. Both cases therefore also register the
+modelled Reynolds-stress tensor (`turbulenceFields` function object → `R`)
+and average it (`RMean`), `k` (`kMean`) and `ω` (`omegaMean`) alongside
+`U`/`UMean`/`UPrime2Mean`; `postprocess_hill.py` sums modelled + resolved
+for the shear-stress and TKE plots. The tutorial's `transient` (SA-IDDES)
+leg is left as a pristine, unmodified copy (see "Not in the git repo"
+below) with no such modelled field registered, so its two panels are
+resolved-only — the conventional way LES/hybrid results are reported, and
+a small effect away from the wall, but a real asymmetry against the two
+RANS legs' modelled+resolved total worth keeping in mind when reading
+those plots.
+
+**RMean/omegaMean averaging bug, found and fixed (2026-08-11/12).** The
+first run of both transient legs (2026-08-11) silently never computed a
+real `RMean`: `fieldAverage`'s field-validity check runs at construction
+time, before `turbulenceFields`'s first `execute()` has registered
+anything, and that output is registered as `turbulenceProperties:R`, not
+plain `R` besides. `omega` wasn't in `fieldAverage1`'s tracked fields at
+all. Both were recovered post-hoc for that first run (averaging 5 saved
+instantaneous snapshots externally), an approximation rather than a true
+running average. Both are now fixed directly in `system/controlDict`
+(qualified field name; `omega` added to `fieldAverage1`) and confirmed
+working on the self-contained rerun (2026-08-12) — `RMean`/`omegaMean` are
+now real, `fieldAverage`-written full fields, same as `UMean`/`kMean`.
+`postprocess_hill.py`'s `_load_field_case` prefers the true `omegaMean`
+when present and reports which source was actually used rather than
+assuming. A second bug surfaced during that same rerun: the 5-snapshot
+fallback still used for `nut`/`sigmakNN`/`CkNN`/`Comega2NN` (never added
+to `fieldAverage1`, so still post-hoc) had its list of snapshot times
+hardcoded from the *first* run — silently matched nothing after the
+rerun, since adaptive timestepping doesn't reproduce exact time values
+bit-for-bit between runs, and every field relying on it went quietly
+missing. Fixed by discovering the last 5 time directories fresh per case
+(`_find_snapshot_times`) instead of a fixed list.
 
 **Four-way comparison.** `postprocess_hill.py` (run from `periodicHill/`)
 reproduces Davidson's Figs. 14–16 (velocity, shear stress, TKE at his six
@@ -450,8 +458,11 @@ Davidson's six stations (0.05, 0.5, 1, 2, ..., 8, matching the stock
 tutorial's own validation stations) — the plot script picks Davidson's six
 by default. Figures are written to `periodicHill/figures/`.
 
-`hill_velocity.png`/`hill_shear_stress.png` (kOmega/kOmegaDavidsonNN/DNS,
-first run 2026-08-11) reproduce Davidson's own finding well. The x/H=0.05
+`hill_velocity.png`/`hill_shear_stress.png` (kOmega/kOmegaDavidsonNN/DNS;
+first run 2026-08-11, finalised on the self-contained, true-average rerun
+2026-08-12 — same result either way, confirming the RMean/omega averaging
+bug above didn't meaningfully affect the first run's plots) reproduce
+Davidson's own finding well. The x/H=0.05
 station briefly plotted the wrong DNS file (`DNS_x05h.dat`, which is
 actually x/H=0.5 — the naming strips the decimal point, so digit count
 distinguishes "005"=0.05 from "05"=0.5; fixed in `_DNS_FILENAMES`), visible
@@ -483,11 +494,14 @@ differences read as physical, not a scale artefact. Uses the same
 masked-triangulation technique as
 `pitzDaily`'s `postProcessing/plotPitzDaily.py` (raw OpenFOAM field
 parsing + `writeCellCentres` + `tricontourf`, no VTK/PyFoam dependency).
-U/k use the true running `UMean`/`kMean` averages `fieldAverage` already
-writes as full fields; omega has no such average (`fieldAverage` was only
-told to average U, p, R, k) so is instead a 5-snapshot time average over
-the same saved instantaneous fields the post-hoc `RMean` fix used. Building
-these exposed a real, pre-existing bug: `hill_y_lower()` (used for wall
+U/k/omega use the true running `UMean`/`kMean`/`omegaMean` averages
+`fieldAverage` writes as full fields (see the RMean/omegaMean averaging
+bug note above); `nut` and (kOmegaDavidsonNN only) `sigmakNN`/`CkNN`/
+`Comega2NN` aren't tracked by `fieldAverage` at all, so still use the
+5-snapshot post-hoc approach, now with the snapshot times discovered
+fresh per case rather than a hardcoded list (see the same note). Building
+this plot originally exposed a real, pre-existing bug: `hill_y_lower()`
+(used for wall
 masking) decays ~monotonically over the full domain instead of the real
 hill shape (crest → flat channel floor by x/H≈2 → crest again by x/H≈9) —
 never caught before because every other caller only evaluates it at

@@ -11,10 +11,19 @@ canCompile || exit 0    # Dynamic code
 # (An earlier version of this case restarted from
 # steadyState_kOmegaDavidsonNN_2D's converged field; that field's near-crest
 # k/omega blow-up turned out to be a pseudo-time SIMPLE artifact that
-# diverged instantly under real time-accurate stepping, however small.
-# Only the mesh is reused here -- not the steady case's fields.)
-echo "Linking mesh from steadyState_kOmegaDavidsonNN_2D"
-ln -sf ../../steadyState_kOmegaDavidsonNN_2D/constant/polyMesh constant/polyMesh
+# diverged instantly under real time-accurate stepping, however small. Only
+# the mesh was ever reused from that case -- not its fields.)
+#
+# Self-contained: generates its own mesh (identical blockMeshDict/
+# topoSetDict to what steadyState_kOmegaDavidsonNN_2D used) rather than
+# symlinking that diagnostic-only case's -- finalised 2026-08-11, since
+# steadyState_kOmegaDavidsonNN_2D is kept only in the README's written
+# account from here on (see its "periodicHill sub-cases" section).
+rm -f constant/polyMesh    # drop any stale symlink from an earlier layout
+
+runApplication blockMesh
+
+runApplication topoSet
 
 restore0Dir
 

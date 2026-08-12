@@ -761,13 +761,20 @@ def plot_nn_coefficients(cases_data, H, out_dir):
 # imported -- each case here owns its own plotting script.
 # ---------------------------------------------------------------------------
 
-# The 5 instantaneous full-field snapshots purgeWrite left on disk (see the
-# RMean note above) -- reused here to time-average omega the same way,
-# since fieldAverage was never told to average it (only U, p, R, k).
-_FIELD_SNAPSHOT_TIMES = [
-    "10.898066377287805", "10.948066377287688", "10.998066377287572",
-    "11.048066377287455", "11.098066377287338",
-]
+def _find_snapshot_times(case_dir, n=5):
+    """The last n instantaneous full-field time directories purgeWrite left
+    on disk, as their exact on-disk names -- used to time-average fields
+    fieldAverage was never told to average (nut, and kOmegaDavidsonNN's own
+    sigmakNN/CkNN/Comega2NN). Discovered fresh per case/run rather than a
+    fixed list: adaptive timestepping means exact time values are chaotic
+    and won't reproduce bit-for-bit between reruns (confirmed the hard way
+    -- a hardcoded list from an earlier run silently matched nothing after
+    a rerun, since none of its literal timestamps existed on disk anymore,
+    and every field relying on it quietly went missing)."""
+    case_dir = Path(case_dir)
+    dirs = [d.name for d in case_dir.iterdir()
+            if d.is_dir() and _is_float(d.name) and d.name != "0"]
+    return sorted(dirs, key=float)[-n:]
 
 
 def _find_latest_written_time(case_dir):
@@ -969,7 +976,8 @@ def _load_field_case(case_dir, H):
     time_name = _find_latest_written_time(case_dir)
     if time_name is None:
         return None
-    times = sorted(set(_FIELD_SNAPSHOT_TIMES) | {time_name}, key=float)
+    snapshot_times = _find_snapshot_times(case_dir)
+    times = sorted(set(snapshot_times) | {time_name}, key=float)
     _prepare_ascii_fields(case_dir, times)
     x, y = _cell_centres(case_dir, time_name)
     if x is None:
@@ -979,18 +987,18 @@ def _load_field_case(case_dir, H):
     k = _read_of_field(td / "kMean")
     # omegaMean only exists on a rerun since the omega/turbulenceFields fix
     # (see transient_kOmega_2D/system/controlDict's fieldAverage1 comment);
-    # the first run (2026-08-11) predates it, so fall back to the same
-    # 5-snapshot post-hoc average nut/the NN coefficients still use below.
+    # earlier runs predate it, so fall back to the same 5-snapshot post-hoc
+    # average nut/the NN coefficients still use below.
     if (td / "omegaMean").exists():
         omega = _read_of_field(td / "omegaMean")
         omega_source = "true running average"
     else:
-        omega = _time_average_field(case_dir, "omega", _FIELD_SNAPSHOT_TIMES)
+        omega = _time_average_field(case_dir, "omega", snapshot_times)
         omega_source = "5-snapshot approximation"
-    nut = _time_average_field(case_dir, "nut", _FIELD_SNAPSHOT_TIMES)
-    sigmakNN = _time_average_field(case_dir, "sigmakNN", _FIELD_SNAPSHOT_TIMES)
-    CkNN = _time_average_field(case_dir, "CkNN", _FIELD_SNAPSHOT_TIMES)
-    Comega2NN = _time_average_field(case_dir, "Comega2NN", _FIELD_SNAPSHOT_TIMES)
+    nut = _time_average_field(case_dir, "nut", snapshot_times)
+    sigmakNN = _time_average_field(case_dir, "sigmakNN", snapshot_times)
+    CkNN = _time_average_field(case_dir, "CkNN", snapshot_times)
+    Comega2NN = _time_average_field(case_dir, "Comega2NN", snapshot_times)
     return dict(x=x, y=y, Ux=Ux, k=k, omega=omega, omega_source=omega_source,
                nut=nut, sigmakNN=sigmakNN, CkNN=CkNN, Comega2NN=Comega2NN,
                time=time_name)

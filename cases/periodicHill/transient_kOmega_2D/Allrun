@@ -8,13 +8,21 @@ canCompile || exit 0    # Dynamic code
 # Matches Davidson's actual method (Sec. 5.3) for *both* turbulence models
 # he compares there -- "unsteady simulations are carried out marching to
 # steady-state conditions", no steady RANS initialisation stage at all.
-# Standard kOmega steady (steadyState_kOmega_2D) blows up on this flow just
-# as kOmegaDavidsonNN's steady diagnostic does (see steadyState_kOmega_2D/
-# Allrun) -- consistent with Davidson never running a steady RANS stage for
-# this case either. Only the mesh is reused from steadyState_kOmega_2D, via
-# symlink -- not its (divergent) fields.
-echo "Linking mesh from steadyState_kOmega_2D"
-ln -sf ../../steadyState_kOmega_2D/constant/polyMesh constant/polyMesh
+# Standard kOmega steady (steadyState_kOmega_2D, since finalisation kept
+# only in the README's written account -- see its "periodicHill sub-cases"
+# section) blows up on this flow just as kOmegaDavidsonNN's steady
+# diagnostic did -- consistent with Davidson never running a steady RANS
+# stage for this case either.
+#
+# Self-contained: generates its own mesh (identical blockMeshDict/
+# topoSetDict to what steadyState_kOmega_2D used) rather than symlinking
+# the steady case's -- finalised 2026-08-11 so this case doesn't depend on
+# a diagnostic-only sibling directory existing.
+rm -f constant/polyMesh    # drop any stale symlink from an earlier layout
+
+runApplication blockMesh
+
+runApplication topoSet
 
 restore0Dir
 

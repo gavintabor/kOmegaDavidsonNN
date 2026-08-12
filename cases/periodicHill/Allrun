@@ -8,14 +8,18 @@ echo "--- OpenFOAM tutorial baseline (SA steady init -> SA-IDDES transient) ---"
 (cd steadyState && ./Allrun)
 (cd transient && ./Allrun)
 
-echo "--- Standard kOmega (steady diagnostic -- expected to diverge, see"
-echo "    steadyState_kOmega_2D/Allrun -- then fresh-start transient) ---"
-(cd steadyState_kOmega_2D && ./Allrun)
+# Standard kOmega and kOmegaDavidsonNN both diverge under steady SIMPLEC on
+# this flow (matches Davidson's own method -- he never runs a steady RANS
+# stage here either, see the README's "periodicHill sub-cases" section) --
+# both transient_* cases below are self-contained (own blockMesh+topoSet,
+# fresh-start pimpleFoam) and don't need a steady stage run first. The
+# once-diagnostic steadyState_kOmega_2D/steadyState_kOmegaDavidsonNN(_2D)
+# cases that demonstrated the divergence are no longer part of this repo --
+# see the README for that finding's written record.
+echo "--- Standard kOmega (fresh-start transient) ---"
 (cd transient_kOmega_2D && ./Allrun)
 
-echo "--- kOmegaDavidsonNN (steady diagnostic -- expected to diverge, see"
-echo "    steadyState_kOmegaDavidsonNN_2D/Allrun -- then fresh-start transient) ---"
-(cd steadyState_kOmegaDavidsonNN_2D && ./Allrun)
+echo "--- kOmegaDavidsonNN (fresh-start transient) ---"
 (cd transient_kOmegaDavidsonNN_2D && ./Allrun)
 
 echo "--- Post-processing ---"
