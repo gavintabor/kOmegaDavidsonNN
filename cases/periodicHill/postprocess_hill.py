@@ -1004,17 +1004,80 @@ def _load_field_case(case_dir, H):
                time=time_name)
 
 
-def plot_field_contours(cases_data, H, out_dir):
+def _load_iddes_field_case(case_dir, sample_subdir):
+    """Spanwise-averaged Ux over the full domain for the SA-IDDES
+    `transient` leg, from the flat scatter file
+    `extract_iddes_profiles.py` writes (see that script's docstring for
+    why this doesn't go through `_load_field_case`'s normal
+    single-time-directory-under-case_dir machinery -- this case is
+    decomposed across 16 processors with no reconstructed serial mesh).
+    Returns the same dict shape as `_load_field_case` (k/omega left as
+    None -- SA-IDDES solves neither) or None if not yet extracted.
+
+    Resamples onto a clean regular grid first (via griddata) rather than
+    handing the raw scatter straight to `_hill_masked_triangulation`:
+    unlike the RANS legs' mesh (genuinely vertical i-lines), this
+    tutorial mesh's cell-centre x varies smoothly with y along a nominal
+    column (see extract_iddes_profiles.py's docstring), so near the
+    domain edges some points end up nearly collinear in x across a wide
+    y range -- Delaunay triangulating that raw scatter directly produces
+    long, thin sliver triangles there that render as a fine vertical
+    striping/ringing artefact in tricontourf (worst near the outlet,
+    x~0.21-0.25). A regular grid has no such degenerate triangles."""
+    case_dir = Path(case_dir)
+    matches = sorted((case_dir / sample_subdir).glob("*/field_UMean.xy"))
+    if not matches:
+        return None
+    fp = matches[-1]  # latest time, by directory mtime-independent sort
+    d = read_sample_file(fp)
+    if d is None:
+        return None
+    x_raw, y_raw, ux_raw = d[:, 0], d[:, 1], d[:, 2]
+
+    from scipy.interpolate import griddata
+    from scipy.ndimage import gaussian_filter
+    nx, ny = 200, 160  # matches the RANS legs' own mesh resolution
+    xg = np.linspace(x_raw.min(), x_raw.max(), nx)
+    yg = np.linspace(y_raw.min(), y_raw.max(), ny)
+    Xg, Yg = np.meshgrid(xg, yg)
+    Ux_grid = griddata((x_raw, y_raw), ux_raw, (Xg, Yg), method="linear")
+    valid0 = ~np.isnan(Ux_grid)
+
+    # griddata's own internal Delaunay triangulation of the raw scatter
+    # still inherits the sliver-triangle conditioning problem described
+    # above -- it just relocates the resulting interpolation noise onto
+    # the (otherwise clean) regular output grid instead of matplotlib's
+    # triangulation. A light NaN-aware Gaussian smoothing pass removes
+    # that residual noise; justified since this is a turbulence-time-
+    # averaged mean field with no reason to have real structure at the
+    # single-grid-cell scale the noise appears at. NaN-safe via the
+    # standard "smooth both the filled data and the validity mask, then
+    # divide" trick, sigma=1 grid cell.
+    filled = np.where(valid0, Ux_grid, 0.0)
+    weight = gaussian_filter(valid0.astype(float), sigma=1.0)
+    smoothed = gaussian_filter(filled, sigma=1.0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        Ux_grid = np.where(weight > 0.3, smoothed / weight, np.nan)
+    valid = ~np.isnan(Ux_grid)
+
+    return dict(x=Xg[valid], y=Yg[valid], Ux=Ux_grid[valid], k=None,
+               omega=None, omega_source=None,
+               nut=None, sigmakNN=None, CkNN=None, Comega2NN=None,
+               time=fp.parent.name)
+
+
+def plot_field_contours(cases_data, H, out_dir, sample_subdir="postProcessing/sample"):
     """U, k, omega contour plots over the whole domain, one combined figure,
-    3 rows (fields) x 2 columns (kOmega left, kOmegaDavidsonNN right --
-    the SA-IDDES tutorial leg has neither k nor omega, so isn't part of
-    this). Each row shares one color scale/colorbar across both columns,
-    so left-right comparison reads directly as a physical difference, not
-    a scale difference."""
-    ordered_cases = [c for c in cases_data if c in CASE_STYLE]  # kOmega, kOmegaDavidsonNN, in --cases order
+    3 rows (fields) x N columns (kOmega, kOmegaDavidsonNN, and -- U row
+    only -- the SA-IDDES tutorial leg, which solves neither k nor omega so
+    has no columns in those rows). Each row shares one color scale/colorbar
+    across whichever columns it has data for, so left-right comparison
+    reads directly as a physical difference, not a scale difference."""
+    ordered_cases = [c for c in cases_data if c in CASE_STYLE]  # kOmega, kOmegaDavidsonNN, transient, in --cases order
     field_cases = {}
     for case in ordered_cases:
-        c = _load_field_case(case, H)
+        c = (_load_iddes_field_case(case, sample_subdir) if case == "transient"
+             else _load_field_case(case, H))
         if c is not None:
             field_cases[case] = c
 
@@ -1208,7 +1271,7 @@ def main():
     plot_shear_stress(cases_data, dns_dir, args.H, args.Ub, out_dir)
     plot_tke(cases_data, dns_dir, args.H, args.Ub, out_dir)
     plot_nn_coefficients(cases_data, args.H, out_dir)
-    plot_field_contours(cases_data, args.H, out_dir)
+    plot_field_contours(cases_data, args.H, out_dir, args.sample_subdir)
     plot_coefficient_ratio_contours(cases_data, out_dir)
     print(f"\nDone. Figures written to {out_dir}/")
 

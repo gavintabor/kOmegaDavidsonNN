@@ -451,6 +451,49 @@ bit-for-bit between runs, and every field relying on it went quietly
 missing. Fixed by discovering the last 5 time directories fresh per case
 (`_find_snapshot_times`) instead of a fixed list.
 
+**SA-IDDES leg finalised (2026-08-14) — `sample` function object
+workaround.** The `transient` (SA-IDDES) run itself completed 2026-08-14
+(~4.5 days, restarted across several sessions — see its `log.pimpleFoam`),
+but its own in-solve `sample` function object (`system/controlDict`,
+mirroring the stock tutorial's own configuration verbatim) never actually
+produced the spanwise+time-averaged profiles it's configured for: its
+field list references `columnAverage:columnAverage(UMean)`/
+`(UPrime2Mean)`, but some execute/write-ordering mismatch between
+`columnAverage` (`executeControl writeTime`) and `sample` (`executeControl
+onEnd`) meant `sample` always ran before `columnAverage`'s registered
+fields existed for it to find (`Cannot find registered field
+matching...`). Confirmed byte-identical to the stock v2606 tutorial's own
+controlDict — a pre-existing tutorial quirk, not something this port
+introduced or broke.
+
+`periodicHill/extract_iddes_profiles.py` replaces that built-in `sample`
+step, reading the already-correct `UMean`/`UPrime2Mean` fields directly
+and writing the same `xbyh<x/H>_*.xy` file format `postprocess_hill.py`
+already expects. Two further wrinkles surfaced building it (both
+documented in the script itself): (1) a first attempt via `postProcess
+-dict` (running `fieldAverage1`+`columnAverage`+`sample` together in one
+standalone invocation, to sidestep the ordering bug above) turned out to
+force-write `fieldAverage1`'s output despite `writeControl none` in that
+dict, silently *overwriting* the correctly-accumulated `UPrime2Mean` at
+the run's true final time (`1509.9999999974898`) with a near-zero
+degenerate single-instant recomputation (~1e-19 where ~1e-4 was expected)
+— not recoverable (fieldAverage doesn't persist the accumulator needed to
+reconstruct it), so the extraction instead uses the previous
+purgeWrite-kept time (`1509.9499999975023`, 0.05 s / ~1 part in 190 less
+averaging than the true final time — statistically negligible against the
+~9.5 s / 37.7-through-flow window). `U`/`UMean`/`p`/`pMean` at the true
+final time are unaffected, only that one `UPrime2Mean` file, and only at
+that one time. (2) This mesh's streamwise "columns" turned out not to sit
+at constant x for all y — cell-centre x varies smoothly with y along a
+nominal i-index, presumably grading/smoothing near the wavy hill surface
+propagating into the interior — so extracting a true vertical-line
+profile needs actual scattered-data interpolation (a local Delaunay
+triangulation per station, reused across all 9 `UMean`/`UPrime2Mean`
+components) rather than a column lookup. Separately, `reconstructParMesh`
+segfaults on this mesh's processor-cyclic patches, so the extraction
+script works directly against the 16 decomposed `processor*` directories
+rather than a reconstructed serial mesh.
+
 **Four-way comparison.** `postprocess_hill.py` (run from `periodicHill/`)
 reproduces Davidson's Figs. 14–16 (velocity, shear stress, TKE at his six
 x/H = 0.05, 1, 3, 4, 5, 7 stations) with a fourth series added: `kOmega`
@@ -489,15 +532,29 @@ predicted k with the k-ω-PINN-NN model is in general too large"), while
 standard `kOmega` under-predicts and is actually closer to DNS for x/H≥5,
 also matching his text.
 
-`field_contours.png` gives the same comparison (`kOmega` vs
-`kOmegaDavidsonNN` only — the SA-IDDES tutorial leg has neither k nor
-omega) as filled contours over the whole domain: one combined figure, 3
-rows (U, k, ω) x 2 columns (kOmega left, kOmegaDavidsonNN right), each row
-sharing one color scale/colorbar across both columns so left-right
-differences read as physical, not a scale artefact. Uses the same
-masked-triangulation technique as
-`pitzDaily`'s `postProcessing/plotPitzDaily.py` (raw OpenFOAM field
-parsing + `writeCellCentres` + `tricontourf`, no VTK/PyFoam dependency).
+`field_contours.png` gives the same comparison as filled contours over the
+whole domain: one combined figure, 3 rows (U, k, ω) x up to 3 columns
+(`kOmega`, `kOmegaDavidsonNN`, and — U row only, added 2026-08-14 once the
+SA-IDDES leg finished — the tutorial's SA-IDDES result; it solves neither
+k nor omega, so the bottom two rows only ever have 2 columns, with the
+third slot left blank), each row sharing one color scale/colorbar across
+whichever columns it has data for so left-right differences read as
+physical, not a scale artefact. The `kOmega`/`kOmegaDavidsonNN` columns
+use the same masked-triangulation technique as `pitzDaily`'s
+`postProcessing/plotPitzDaily.py` (raw OpenFOAM field parsing +
+`writeCellCentres` + `tricontourf`, no VTK/PyFoam dependency); the
+SA-IDDES column comes from `extract_iddes_profiles.py`'s spanwise-averaged
+scatter (see above), first resampled onto a regular grid via `griddata`
+and lightly Gaussian-smoothed (NaN-aware, σ=1 grid cell) before
+triangulating — directly triangulating that leg's raw scatter produced a
+fine vertical striping artefact near the outlet (worst around x≈0.21–0.25
+m), traced to `griddata`'s own internal Delaunay triangulation inheriting
+the same sliver-triangle conditioning issue described above (this mesh's
+cell-centre x isn't constant with y along a nominal column, so points can
+end up nearly collinear in x over a wide y-range there); the raw
+(unsmoothed) profile data itself is confirmed smooth and structure-free at
+that location, so the smoothing removes only that interpolation noise, not
+real flow features.
 U/k/omega use the true running `UMean`/`kMean`/`omegaMean` averages
 `fieldAverage` writes as full fields (see the RMean/omegaMean averaging
 bug note above); `nut` and (kOmegaDavidsonNN only) `sigmakNN`/`CkNN`/
