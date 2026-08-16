@@ -455,6 +455,17 @@ missing. Fixed by discovering the last 5 time directories fresh per case
 workaround.** The `transient` (SA-IDDES) run itself completed 2026-08-14
 (~4.5 days, restarted across several sessions — see its `log.pimpleFoam`),
 but its own in-solve `sample` function object (`system/controlDict`,
+
+**TODO: record RANS run times for comparison.** SA-IDDES's ~4.5 days above
+is the only wall-clock figure captured anywhere in this repo — the
+`transient_kOmega_2D`/`transient_kOmegaDavidsonNN_2D` runs' durations were
+never written down (their `log.pimpleFoam` files are gitignored and only
+ever existed on the machine that ran them). Recalled as "1-2 hours" but
+unconfirmed; worth pinning down properly (final `ClockTime` line in each
+case's `log.pimpleFoam`) for the paper's runtime-comparison discussion,
+given the ~80x mesh-size difference (1-cell-thick 2D vs. full 3D periodic
+mesh) this order-of-magnitude gap is expected, but should be an actual
+recorded number rather than a memory.
 mirroring the stock tutorial's own configuration verbatim) never actually
 produced the spanwise+time-averaged profiles it's configured for: its
 field list references `columnAverage:columnAverage(UMean)`/
