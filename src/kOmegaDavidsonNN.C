@@ -455,15 +455,6 @@ kOmegaDavidsonNN<BasicTurbulenceModel>::kOmegaDavidsonNN
             0.09
         )
     ),
-    beta_
-    (
-        dimensioned<scalar>::getOrAddToDict
-        (
-            "beta",
-            this->coeffDict_,
-            0.072
-        )
-    ),
     gamma_
     (
         dimensioned<scalar>::getOrAddToDict
@@ -471,15 +462,6 @@ kOmegaDavidsonNN<BasicTurbulenceModel>::kOmegaDavidsonNN
             "gamma",
             this->coeffDict_,
             5.0/9.0
-        )
-    ),
-    alphaK_
-    (
-        dimensioned<scalar>::getOrAddToDict
-        (
-            "alphaK",
-            this->coeffDict_,
-            0.5
         )
     ),
     alphaOmega_
@@ -587,9 +569,7 @@ bool kOmegaDavidsonNN<BasicTurbulenceModel>::read()
     if (eddyViscosity<RASModel<BasicTurbulenceModel>>::read())
     {
         Cmu_.readIfPresent(this->coeffDict());
-        beta_.readIfPresent(this->coeffDict());
         gamma_.readIfPresent(this->coeffDict());
-        alphaK_.readIfPresent(this->coeffDict());
         alphaOmega_.readIfPresent(this->coeffDict());
         ewmaM_.readIfPresent(this->coeffDict());
         this->coeffDict().readIfPresent("usePySR", usePySR_);

@@ -57,9 +57,7 @@ Description
         kOmegaDavidsonNNCoeffs
         {
             betaStar    0.09;
-            beta        0.072;
             gamma       0.5556;  // 5/9
-            alphaK      0.5;
             alphaOmega  0.5;
             ewmaM       500;   // EWMA window (Davidson Eq. 18): a = exp(-1/m)
         }
@@ -100,9 +98,7 @@ protected:
         // Model coefficients
 
             dimensionedScalar Cmu_;
-            dimensionedScalar beta_;
             dimensionedScalar gamma_;
-            dimensionedScalar alphaK_;
             dimensionedScalar alphaOmega_;
             dimensionedScalar ewmaM_;   // EWMA window m; a = exp(-1/m)
             bool usePySR_;              // use PySR expression for sigmakNN (Davidson Eq. 22)
@@ -117,7 +113,7 @@ protected:
 
             volScalarField sigmakNN_;    // turbulent Prandtl number for k (std: 2.0)
             volScalarField CkNN_;        // k production multiplier        (std: 1.0)
-            volScalarField Comega2NN_;   // omega destruction coefficient   (std: 0.072)
+            volScalarField Comega2NN_;   // omega destruction coefficient   (std: 0.075 = 3/40)
 
 
     // Protected Member Functions
